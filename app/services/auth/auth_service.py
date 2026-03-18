@@ -17,13 +17,34 @@ from app.models.auth import User
 from app.models.super_admin import SuperAdmin
 from app.repositories.auth import AuthRepository
 from app.repositories.super_admin import SuperAdminRepository
+from app.repositories.tenant import TenantRepository
 
 
 class AuthService:
     def __init__(self, db: Session) -> None:
         self.auth_repository = AuthRepository(db)
         self.super_admin_repository = SuperAdminRepository(db)
+        self.tenant_repository = TenantRepository(db)
         self.settings = get_settings()
+
+    def get_current_session(self, current_user: User) -> dict:
+        tenant = self.tenant_repository.get_by_id(current_user.tenant_id)
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found",
+            )
+
+        return {
+            "id": current_user.id,
+            "name": current_user.name,
+            "role": current_user.role,
+            "tenant_id": current_user.tenant_id,
+            "tenant": {
+                "name": tenant.name,
+                "slot_duration": tenant.slot_duration,
+            },
+        }
 
     def login_user(self, *, email: str, password: str) -> tuple[User, str, str]:
         user = self.auth_repository.get_user_by_email(email=email)

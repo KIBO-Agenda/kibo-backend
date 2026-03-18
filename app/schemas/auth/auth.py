@@ -50,3 +50,16 @@ class ChangePasswordRequest(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+
+
+class CurrentSessionTenant(BaseModel):
+    name: str
+    slot_duration: int
+
+
+class CurrentSessionResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    role: UserRole
+    tenant_id: uuid.UUID
+    tenant: CurrentSessionTenant

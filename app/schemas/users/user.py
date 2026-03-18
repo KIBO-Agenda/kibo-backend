@@ -23,7 +23,8 @@ class UserResponse(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
     name: str
-    email: EmailStr
+    # Response uses str to avoid runtime 500 with legacy invalid emails in DB.
+    email: str
     role: UserRole
     is_active: bool
     created_at: datetime

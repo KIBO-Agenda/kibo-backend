@@ -20,7 +20,7 @@ class ClientResponse(BaseModel):
     id: uuid.UUID
     tenant_id: uuid.UUID
     name: str
-    phone: str
+    phone: str | None
     notes: str | None
     created_at: datetime
 

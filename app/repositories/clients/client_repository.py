@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.models.clients import Client
@@ -10,7 +10,14 @@ class ClientRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def create(self, *, tenant_id: uuid.UUID, name: str, phone: str, notes: str | None = None) -> Client:
+    def create(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        name: str,
+        phone: str | None = None,
+        notes: str | None = None,
+    ) -> Client:
         entity = Client(tenant_id=tenant_id, name=name, phone=phone, notes=notes)
         self.db.add(entity)
         self.db.commit()
@@ -23,6 +30,17 @@ class ClientRepository:
 
     def get_by_phone(self, tenant_id: uuid.UUID, phone: str) -> Client | None:
         stmt = select(Client).where(and_(Client.tenant_id == tenant_id, Client.phone == phone))
+        return self.db.execute(stmt).scalar_one_or_none()
+
+    def get_by_name_without_phone(self, tenant_id: uuid.UUID, name: str) -> Client | None:
+        normalized_name = name.strip()
+        stmt = select(Client).where(
+            and_(
+                Client.tenant_id == tenant_id,
+                Client.phone.is_(None),
+                func.lower(Client.name) == normalized_name.lower(),
+            )
+        )
         return self.db.execute(stmt).scalar_one_or_none()
 
     def list_by_tenant(self, tenant_id: uuid.UUID) -> list[Client]:

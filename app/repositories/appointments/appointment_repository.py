@@ -1,10 +1,13 @@
 import uuid
 from datetime import date, time
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.orm import Session
 
 from app.models.appointments import Appointment, AppointmentStatus
+from app.models.auth import User
+from app.models.clients import Client
+from app.models.services import Service
 
 
 class AppointmentRepository:
@@ -135,3 +138,120 @@ class AppointmentRepository:
         entity.status = AppointmentStatus.CANCELLED
         self.db.commit()
         return True
+
+    def get_agenda_summary(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        user_id: uuid.UUID | None = None,
+    ) -> dict[str, int]:
+        stmt = select(
+            func.count(Appointment.id).label("total"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Appointment.status == AppointmentStatus.CONFIRMED, 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("confirmed"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Appointment.status == AppointmentStatus.PENDING, 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("pending"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Appointment.status == AppointmentStatus.CANCELLED, 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("cancelled"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Appointment.status == AppointmentStatus.ATTENDED, 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("attended"),
+        ).where(
+            Appointment.tenant_id == tenant_id,
+            Appointment.appointment_date >= start_date,
+            Appointment.appointment_date <= end_date,
+        )
+
+        if user_id is not None:
+            stmt = stmt.where(Appointment.user_id == user_id)
+
+        row = self.db.execute(stmt).one()
+        return {
+            "total": int(row.total or 0),
+            "confirmed": int(row.confirmed or 0),
+            "pending": int(row.pending or 0),
+            "cancelled": int(row.cancelled or 0),
+            "attended": int(row.attended or 0),
+        }
+
+    def list_agenda_appointments(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        user_id: uuid.UUID | None = None,
+    ):
+        stmt = (
+            select(
+                Appointment.id.label("id"),
+                Appointment.time_start.label("time_start"),
+                Appointment.time_end.label("time_end"),
+                Client.name.label("client_name"),
+                Appointment.status.label("status"),
+                User.name.label("staff_name"),
+                Service.name.label("service_name"),
+            )
+            .select_from(Appointment)
+            .join(
+                Client,
+                and_(
+                    Client.id == Appointment.client_id,
+                    Client.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .join(
+                User,
+                and_(
+                    User.id == Appointment.user_id,
+                    User.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .join(
+                Service,
+                and_(
+                    Service.id == Appointment.service_id,
+                    Service.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.appointment_date >= start_date,
+                Appointment.appointment_date <= end_date,
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+        )
+
+        if user_id is not None:
+            stmt = stmt.where(Appointment.user_id == user_id)
+
+        return list(self.db.execute(stmt).all())

@@ -3,9 +3,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_tenant_user
 from app.db.session import get_db
+from app.models.auth import User
 from app.schemas.auth import (
     ChangePasswordRequest,
+    CurrentSessionResponse,
     ForgotPasswordRequest,
     MessageResponse,
     ResetPasswordRequest,
@@ -16,6 +19,16 @@ from app.schemas.auth import (
 from app.services.auth.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.get("/me", response_model=CurrentSessionResponse)
+def get_me(
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+):
+    service = AuthService(db)
+    data = service.get_current_session(current_user)
+    return CurrentSessionResponse.model_validate(data)
 
 
 @router.post("/login")
