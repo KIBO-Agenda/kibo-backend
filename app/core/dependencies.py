@@ -1,8 +1,12 @@
 from typing import Annotated
+import uuid
 
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
+from sqlalchemy.orm import Session
 
 from app.core.security import decode_token
+from app.db.session import get_db
+from app.models.auth import User, UserRole
 
 
 def get_tenant_id_from_token(
@@ -57,3 +61,71 @@ def get_super_admin_id_from_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
         )
+
+
+def get_current_tenant_user(
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+    db: Session = Depends(get_db),
+) -> User:
+    """Resolve authenticated tenant user from bearer token and DB."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authorization header",
+        )
+
+    token = authorization.split(" ")[1]
+    try:
+        payload = decode_token(token)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        )
+
+    if payload.get("scope") != "tenant_user":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant user access required",
+        )
+
+    sub = payload.get("sub")
+    tenant_id_str = payload.get("tenant_id")
+    if not sub or not tenant_id_str:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid tenant token payload",
+        )
+
+    try:
+        user_id = uuid.UUID(sub)
+        tenant_id = uuid.UUID(tenant_id_str)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token subject or tenant_id",
+        ) from exc
+
+    user = (
+        db.query(User)
+        .filter(User.id == user_id, User.tenant_id == tenant_id, User.is_active.is_(True))
+        .first()
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+    return user
+
+
+def require_owner(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+) -> User:
+    """Require owner role for privileged tenant operations."""
+    if current_user.role != UserRole.OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Owner role required",
+        )
+    return current_user

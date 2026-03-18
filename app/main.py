@@ -6,6 +6,9 @@ from app.api.v1.super_admin.router import router as super_admin_router
 from app.api.v1.tenant.router import router as tenant_router
 from app.api.v1.tenant.payments_router import router as payments_router
 from app.api.v1.users.router import router as users_router
+from app.api.v1.clients.router import router as clients_router
+from app.api.v1.services.router import router as services_router
+from app.api.v1.appointments.router import router as appointments_router
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -24,6 +27,9 @@ app.include_router(super_admin_router, prefix=settings.API_V1_PREFIX)
 app.include_router(tenant_router, prefix=settings.API_V1_PREFIX)
 app.include_router(payments_router, prefix=settings.API_V1_PREFIX)
 app.include_router(users_router, prefix=settings.API_V1_PREFIX)
+app.include_router(clients_router, prefix=settings.API_V1_PREFIX)
+app.include_router(services_router, prefix=settings.API_V1_PREFIX)
+app.include_router(appointments_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/health", tags=["health"])

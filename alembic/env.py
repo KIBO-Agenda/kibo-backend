@@ -10,8 +10,11 @@ from app.db.base import Base
 from app.models.auth import User
 from app.models.super_admin import SuperAdmin
 from app.models.tenant import Tenant, TenantPayment
+from app.models.clients import Client
+from app.models.services import Service
+from app.models.appointments import Appointment
 
-_ = (User, SuperAdmin, Tenant, TenantPayment)
+_ = (User, SuperAdmin, Tenant, TenantPayment, Client, Service, Appointment)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
