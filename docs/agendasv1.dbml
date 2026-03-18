@@ -1,0 +1,134 @@
+// ==========================================
+// ENUMS (Tipos de datos estandarizados)
+// ==========================================
+
+Enum user_role {
+  owner // Acceso total, pagos, panel principal
+  staff // Solo ve y gestiona su propia agenda
+}
+
+Enum appointment_status {
+  pending // Recién creada
+  confirmed // Confirmada por el cliente
+  attended // Servicio finalizado
+  cancelled // Cancelada
+}
+
+Enum subscription_status {
+  active
+  past_due // Periodo de gracia (ej. 5 días)
+  suspended // Acceso bloqueado (HTTP 402)
+}
+
+// ==========================================
+// TABLAS CORE (KISS & Multi-tenant)
+// ==========================================
+
+Table tenants {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar [not null]
+  phone varchar
+  subscription_status subscription_status [default: 'active']
+  subscription_valid_until timestamp [note: 'Fecha para calcular vencimiento y periodo de gracia']
+  slot_duration int [default: 15, note: 'Duración base de la grilla en minutos (ej. 15, 30). Vital para renderizar el frontend.']
+  created_at timestamp [default: `now()`]
+  
+  Note: 'Representa al Negocio/SaaS Customer. Centraliza configuraciones para evitar tablas 1:1 innecesarias.'
+}
+
+Table users {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  name varchar [not null]
+  email varchar [not null, unique]
+  password_hash varchar [not null]
+  role user_role [default: 'staff']
+  is_active boolean [default: true]
+  created_at timestamp [default: `now()`]
+
+  Indexes {
+    tenant_id [name: 'idx_users_tenant']
+  }
+  
+  Note: 'Usuarios del sistema. El owner gestiona el tenant, el staff es el especialista que atiende las citas.'
+}
+
+Table clients {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  name varchar [not null]
+  phone varchar [not null]
+  notes text [note: 'Historial rápido o preferencias del cliente']
+  created_at timestamp [default: `now()`]
+
+  Indexes {
+    tenant_id [name: 'idx_clients_tenant']
+    (tenant_id, phone) [unique, name: 'idx_clients_tenant_phone_unique', note: 'Un mismo teléfono no se repite dentro del mismo negocio']
+  }
+  
+  Note: 'Mini-CRM de clientes. Se crean implícitamente desde el flujo de "Nueva Cita" si no existen.'
+}
+
+Table services {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  name varchar [not null]
+  duration int [not null, note: 'Duración en minutos (ej. 45). Se usa para calcular time_end en appointments.']
+  price decimal [not null, default: 0]
+  is_active boolean [default: true]
+
+  Indexes {
+    tenant_id [name: 'idx_services_tenant']
+  }
+}
+
+Table appointments {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  client_id uuid [not null, ref: > clients.id]
+  user_id uuid [not null, ref: > users.id, note: 'El empleado (staff) asignado a esta cita']
+  service_id uuid [not null, ref: > services.id]
+  appointment_date date [not null, note: 'Permite filtrar rápidamente las citas del día']
+  time_start time [not null]
+  time_end time [not null]
+  status appointment_status [default: 'pending']
+  notes text
+  created_at timestamp [default: `now()`]
+
+  Indexes {
+    tenant_id [name: 'idx_appointments_tenant']
+    appointment_date [name: 'idx_appointments_date']
+    (tenant_id, appointment_date) [name: 'idx_appointments_tenant_date', note: 'Optimiza la consulta principal de la vista de agenda diaria']
+    (user_id, appointment_date, time_start, time_end) [name: 'idx_prevent_overlap', note: 'CRÍTICO: En PostgreSQL esto debe implementarse usando EXCLUDE USING gist (tsrange) para evitar colisiones concurrentes.']
+  }
+  
+  Note: 'Tabla transaccional principal. El endpoint GET filtrará por tenant_id y appointment_date para devolver el resumen completo.'
+}
+// ==========================================
+// ADMINISTRACIÓN SAAS (Panel SuperAdmin)
+// ==========================================
+
+Table super_admins {
+  id uuid [pk, default: `gen_random_uuid()`]
+  name varchar [not null]
+  email varchar [unique, not null]
+  password_hash varchar [not null]
+  created_at timestamp [default: `now()`]
+  
+  Note: 'Este eres tú (y tu equipo). Totalmente aislado de la tabla users para que un fallo de seguridad en un tenant no comprometa todo el SaaS.'
+}
+
+Table tenant_payments {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  amount decimal [not null, note: 'Ej. 50000 COP']
+  payment_date timestamp [default: `now()`]
+  payment_method varchar [note: 'Ej. Efectivo, Transferencia, Wompi, etc.']
+  reference_code varchar [unique, note: 'Útil si a futuro integras pasarelas de pago']
+  
+  Indexes {
+    tenant_id [name: 'idx_payments_tenant']
+  }
+  
+  Note: 'El historial. Cuando registras un pago aquí, el backend automáticamente suma 30 días al subscription_valid_until del tenant.'
+}
