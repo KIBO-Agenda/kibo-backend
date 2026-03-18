@@ -1,0 +1,141 @@
+"""
+Shared pytest configuration and fixtures for all tests.
+Uses in-memory SQLite to avoid PostgreSQL dependency.
+"""
+
+import sys
+from datetime import datetime, timezone, timedelta
+from typing import Generator
+
+import pytest
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool
+
+# CRITICAL: Import app AFTER configuring test database
+# Create test engine FIRST before importing models
+test_engine = create_engine(
+    "sqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+
+@event.listens_for(test_engine, "connect")
+def set_sqlite_pragma(dbapi_conn, connection_record):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+# Now import models which will use the test engine
+from app.db.base import Base
+Base.metadata.create_all(test_engine)
+
+TestSessionLocal = sessionmaker(bind=test_engine, autoflush=False, autocommit=False, class_=Session)
+
+
+@pytest.fixture(scope="function")
+def db() -> Generator[Session, None, None]:
+    """Provide clean SQLite session for tests."""
+    session = TestSessionLocal()
+    yield session
+    session.close()
+
+
+@pytest.fixture(scope="function") 
+def test_app(db):
+    """FastAPI test app with mocked database."""
+    from app.main import app
+    from app.db.session import get_db
+    
+    def override_get_db():
+        yield db
+    
+    app.dependency_overrides[get_db] = override_get_db
+    yield app
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def test_client(test_app):
+    """FastAPI test client."""
+    from fastapi.testclient import TestClient
+    return TestClient(test_app)
+
+
+@pytest.fixture
+def sample_tenant(db: Session):
+    """Create a sample tenant for testing."""
+    from app.models.tenant import Tenant, SubscriptionStatus
+    
+    tenant = Tenant(
+        name="Test Barbershop",
+        phone="555-1234",
+        subscription_status=SubscriptionStatus.ACTIVE,
+        subscription_valid_until=datetime.now(timezone.utc) + timedelta(days=30),
+    )
+    db.add(tenant)
+    db.commit()
+    db.refresh(tenant)
+    return tenant
+
+
+@pytest.fixture
+def sample_super_admin(db: Session):
+    """Create a sample super admin for testing."""
+    from app.models.auth import User, UserRole
+    from app.core.security import get_password_hash
+    
+    admin = User(
+        email="admin@example.com",
+        password_hash=get_password_hash("AdminPass123"),
+        role=UserRole.SUPER_ADMIN,
+        is_active=True,
+    )
+    db.add(admin)
+    db.commit()
+    db.refresh(admin)
+    return admin
+
+
+@pytest.fixture
+def sample_tenant_user(db: Session, sample_tenant):
+    """Create a sample tenant user for testing."""
+    from app.models.auth import User, UserRole
+    from app.core.security import get_password_hash
+    
+    user = User(
+        tenant_id=sample_tenant.id,
+        email="user@example.com",
+        password_hash=get_password_hash("UserPass123"),
+        name="Test User",
+        role=UserRole.STAFF,
+        is_active=True,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@pytest.fixture
+def jwt_token_super_admin(sample_super_admin):
+    """Generate JWT token for super admin."""
+    from app.core.security import create_access_token
+    return create_access_token(
+        data={
+            "sub": str(sample_super_admin.id),
+            "scope": "super_admin",
+        }
+    )
+
+
+@pytest.fixture
+def jwt_token_tenant_user(sample_tenant_user):
+    """Generate JWT token for tenant user."""
+    from app.core.security import create_access_token
+    return create_access_token(
+        data={
+            "sub": str(sample_tenant_user.id),
+            "tenant_id": str(sample_tenant_user.tenant_id),
+        }
+    )

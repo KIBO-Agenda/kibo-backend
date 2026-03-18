@@ -31,6 +31,7 @@ class User(Base):
         SAEnum(
             UserRole,
             name="user_role",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
             create_constraint=False,
             create_type=False,
         ),
