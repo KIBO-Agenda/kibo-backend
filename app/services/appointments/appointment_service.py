@@ -113,7 +113,6 @@ class AppointmentService:
             service_id=service_id,
         )
 
-        # staff can only manage own appointments
         if current_user.role == UserRole.STAFF and current_user.id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -194,7 +193,6 @@ class AppointmentService:
                 detail="end_date cannot be earlier than start_date",
             )
 
-        # Staff sees only own appointments; owner sees whole tenant.
         filtered_user_id = current_user.id if current_user.role == UserRole.STAFF else None
 
         summary = self.appointment_repo.get_agenda_summary(
@@ -230,6 +228,71 @@ class AppointmentService:
             "appointments": appointments,
         }
 
+    def get_weekly_agenda(
+        self,
+        tenant_id: uuid.UUID,
+        current_user: User,
+        *,
+        start_date: date,
+        staff_id: uuid.UUID | None = None,
+    ) -> dict:
+        end_date = start_date + timedelta(days=6)
+        selected_user_id: uuid.UUID | None = None
+
+        if current_user.role == UserRole.STAFF:
+            selected_user_id = current_user.id
+        else:
+            if staff_id is not None:
+                staff_user = self.user_repo.get_by_id(tenant_id, staff_id)
+                if not staff_user:
+                    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Staff user not found")
+                selected_user_id = staff_id
+
+        weekly_summary = self.appointment_repo.get_weekly_summary(
+            tenant_id=tenant_id,
+            start_date=start_date,
+            end_date=end_date,
+            user_id=selected_user_id,
+        )
+        rows = self.appointment_repo.list_agenda_appointments(
+            tenant_id=tenant_id,
+            start_date=start_date,
+            end_date=end_date,
+            user_id=selected_user_id,
+        )
+
+        day_names = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"]
+        days_map: dict[date, dict] = {}
+        for offset in range(7):
+            day_date = start_date + timedelta(days=offset)
+            days_map[day_date] = {
+                "date": day_date,
+                "day_name": day_names[day_date.weekday()],
+                "daily_summary": {"total": 0},
+                "appointments": [],
+            }
+
+        for row in rows:
+            item = {
+                "id": row.id,
+                "time_start": row.time_start.strftime("%H:%M"),
+                "time_end": row.time_end.strftime("%H:%M"),
+                "client_name": row.client_name,
+                "status": row.status,
+                "staff_name": row.staff_name,
+                "service_name": row.service_name,
+            }
+            day_bucket = days_map[row.appointment_date]
+            day_bucket["appointments"].append(item)
+            day_bucket["daily_summary"]["total"] += 1
+
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "weekly_summary": weekly_summary,
+            "days": [days_map[start_date + timedelta(days=i)] for i in range(7)],
+        }
+
     def update_appointment(
         self,
         tenant_id: uuid.UUID,
@@ -248,7 +311,6 @@ class AppointmentService:
         if not entity:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
 
-        # staff can only manage own appointments and cannot reassign user
         if current_user.role == UserRole.STAFF:
             if entity.user_id != current_user.id:
                 raise HTTPException(
@@ -269,7 +331,6 @@ class AppointmentService:
 
         duration, _ = self._validate_references(
             tenant_id,
-            client_id=next_client_id,
             user_id=next_user_id,
             service_id=next_service_id,
         )

@@ -203,6 +203,60 @@ class AppointmentRepository:
             "attended": int(row.attended or 0),
         }
 
+    def get_weekly_summary(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        user_id: uuid.UUID | None = None,
+    ) -> dict[str, int]:
+        stmt = select(
+            func.count(Appointment.id).label("total"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Appointment.status == AppointmentStatus.CONFIRMED, 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("confirmed"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Appointment.status == AppointmentStatus.PENDING, 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("pending"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (Appointment.status == AppointmentStatus.CANCELLED, 1),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("cancelled"),
+        ).where(
+            Appointment.tenant_id == tenant_id,
+            Appointment.appointment_date >= start_date,
+            Appointment.appointment_date <= end_date,
+        )
+
+        if user_id is not None:
+            stmt = stmt.where(Appointment.user_id == user_id)
+
+        row = self.db.execute(stmt).one()
+        return {
+            "total": int(row.total or 0),
+            "confirmed": int(row.confirmed or 0),
+            "pending": int(row.pending or 0),
+            "cancelled": int(row.cancelled or 0),
+        }
+
     def list_agenda_appointments(
         self,
         *,
@@ -214,6 +268,7 @@ class AppointmentRepository:
         stmt = (
             select(
                 Appointment.id.label("id"),
+                Appointment.appointment_date.label("appointment_date"),
                 Appointment.time_start.label("time_start"),
                 Appointment.time_end.label("time_end"),
                 Client.name.label("client_name"),

@@ -15,6 +15,7 @@ from app.schemas.appointments import (
     AppointmentResponse,
     AppointmentStatusUpdate,
     AppointmentUpdate,
+    AppointmentWeeklyResponse,
 )
 from app.services.appointments import AppointmentService
 
@@ -58,6 +59,23 @@ def get_agenda(
         end_date=end_date,
     )
     return AppointmentAgendaResponse.model_validate(data)
+
+
+@router.get("/weekly", response_model=AppointmentWeeklyResponse)
+def get_weekly_agenda(
+    start_date: Annotated[date, Query()],
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    staff_id: Annotated[uuid.UUID | None, Query()] = None,
+):
+    service = AppointmentService(db)
+    data = service.get_weekly_agenda(
+        current_user.tenant_id,
+        current_user,
+        start_date=start_date,
+        staff_id=staff_id,
+    )
+    return AppointmentWeeklyResponse.model_validate(data)
 
 
 @router.get("")

@@ -74,6 +74,31 @@ class AppointmentAgendaResponse(BaseModel):
     appointments: list[AppointmentAgendaItem]
 
 
+class AppointmentWeeklySummary(BaseModel):
+    total: int = Field(default=0)
+    confirmed: int = Field(default=0)
+    pending: int = Field(default=0)
+    cancelled: int = Field(default=0)
+
+
+class AppointmentDailySummary(BaseModel):
+    total: int = Field(default=0)
+
+
+class AppointmentWeeklyDay(BaseModel):
+    date: date
+    day_name: str
+    daily_summary: AppointmentDailySummary
+    appointments: list[AppointmentAgendaItem]
+
+
+class AppointmentWeeklyResponse(BaseModel):
+    start_date: date
+    end_date: date
+    weekly_summary: AppointmentWeeklySummary
+    days: list[AppointmentWeeklyDay]
+
+
 class AppointmentStatusUpdate(BaseModel):
     status: AppointmentStatus
 

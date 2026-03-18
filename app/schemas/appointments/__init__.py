@@ -3,10 +3,14 @@ from app.schemas.appointments.appointment import (
     AppointmentAgendaResponse,
     AppointmentAgendaSummary,
     AppointmentCreate,
+    AppointmentDailySummary,
     AppointmentReschedule,
     AppointmentResponse,
     AppointmentStatusUpdate,
     AppointmentUpdate,
+    AppointmentWeeklyDay,
+    AppointmentWeeklyResponse,
+    AppointmentWeeklySummary,
 )
 
 __all__ = [
@@ -16,6 +20,10 @@ __all__ = [
     "AppointmentAgendaSummary",
     "AppointmentAgendaItem",
     "AppointmentAgendaResponse",
+    "AppointmentWeeklySummary",
+    "AppointmentDailySummary",
+    "AppointmentWeeklyDay",
+    "AppointmentWeeklyResponse",
     "AppointmentStatusUpdate",
     "AppointmentReschedule",
 ]
