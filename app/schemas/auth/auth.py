@@ -7,7 +7,6 @@ from app.models.auth.user import UserRole
 
 
 class UserLoginRequest(BaseModel):
-    tenant_id: uuid.UUID
     email: EmailStr
     password: str
 
@@ -33,3 +32,21 @@ class UserAuthResponse(BaseModel):
 class SuperAdminLoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class MessageResponse(BaseModel):
+    message: str

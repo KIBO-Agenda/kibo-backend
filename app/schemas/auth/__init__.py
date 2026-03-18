@@ -1,4 +1,8 @@
 from app.schemas.auth.auth import (
+	ChangePasswordRequest,
+	ForgotPasswordRequest,
+	MessageResponse,
+	ResetPasswordRequest,
 	SuperAdminLoginRequest,
 	TokenPairResponse,
 	UserAuthResponse,
@@ -10,4 +14,8 @@ __all__ = [
 	"TokenPairResponse",
 	"UserAuthResponse",
 	"SuperAdminLoginRequest",
+	"ForgotPasswordRequest",
+	"ResetPasswordRequest",
+	"ChangePasswordRequest",
+	"MessageResponse",
 ]

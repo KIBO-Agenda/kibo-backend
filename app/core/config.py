@@ -24,6 +24,16 @@ class Settings:
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = int(
         getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7")
     )
+    JWT_PASSWORD_RESET_EXPIRE_MINUTES: int = int(
+        getenv("JWT_PASSWORD_RESET_EXPIRE_MINUTES", "30")
+    )
+    FRONTEND_URL: str = getenv("FRONTEND_URL", "http://localhost:3000")
+    SMTP_HOST: str | None = getenv("SMTP_HOST")
+    SMTP_PORT: int = int(getenv("SMTP_PORT", "587"))
+    SMTP_USERNAME: str | None = getenv("SMTP_USERNAME")
+    SMTP_PASSWORD: str | None = getenv("SMTP_PASSWORD")
+    SMTP_USE_TLS: bool = getenv("SMTP_USE_TLS", "true").lower() == "true"
+    SMTP_SENDER_EMAIL: str = getenv("SMTP_SENDER_EMAIL", "no-reply@agenda.local")
     BACKEND_CORS_ORIGINS: list[str] = [
         origin.strip()
         for origin in getenv("BACKEND_CORS_ORIGINS", "http://localhost:3000").split(",")
