@@ -11,6 +11,7 @@ from app.repositories.clients import ClientRepository
 from app.repositories.services import ServiceRepository
 from app.repositories.tenant import TenantRepository
 from app.repositories.users import UserRepository
+from app.repositories.waitlists import WaitlistRepository
 
 
 class AppointmentService:
@@ -20,6 +21,7 @@ class AppointmentService:
         self.service_repo = ServiceRepository(db)
         self.tenant_repo = TenantRepository(db)
         self.user_repo = UserRepository(db)
+        self.waitlist_repo = WaitlistRepository(db)
 
     def _validate_references(
         self,
@@ -366,6 +368,11 @@ class AppointmentService:
             end_date=end_date,
             user_id=filtered_user_id,
         )
+        summary["waitlist_count"] = self.waitlist_repo.count_unresolved_between_dates(
+            tenant_id=tenant_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
         rows = self.appointment_repo.list_agenda_appointments(
             tenant_id=tenant_id,
             start_date=start_date,
@@ -420,6 +427,16 @@ class AppointmentService:
             end_date=end_date,
             user_id=selected_user_id,
         )
+        weekly_summary["waitlist_count"] = self.waitlist_repo.count_unresolved_between_dates(
+            tenant_id=tenant_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        waitlist_daily_counts = self.waitlist_repo.unresolved_counts_by_date(
+            tenant_id=tenant_id,
+            start_date=start_date,
+            end_date=end_date,
+        )
         rows = self.appointment_repo.list_agenda_appointments(
             tenant_id=tenant_id,
             start_date=start_date,
@@ -434,7 +451,10 @@ class AppointmentService:
             days_map[day_date] = {
                 "date": day_date,
                 "day_name": day_names[day_date.weekday()],
-                "daily_summary": {"total": 0},
+                "daily_summary": {
+                    "total": 0,
+                    "waitlist_count": waitlist_daily_counts.get(day_date, 0),
+                },
                 "appointments": [],
             }
 

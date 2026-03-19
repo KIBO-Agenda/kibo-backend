@@ -4,6 +4,7 @@ from app.models.tenant import Tenant, SubscriptionStatus, TenantPayment
 from app.models.clients import Client
 from app.models.services import Service
 from app.models.appointments import Appointment, AppointmentStatus
+from app.models.waitlists import Waitlist
 
 __all__ = [
     "User",
@@ -16,4 +17,5 @@ __all__ = [
     "Service",
     "Appointment",
     "AppointmentStatus",
+    "Waitlist",
 ]

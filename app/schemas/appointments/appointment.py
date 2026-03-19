@@ -55,6 +55,7 @@ class AppointmentAgendaSummary(BaseModel):
     pending: int = Field(default=0)
     cancelled: int = Field(default=0)
     attended: int = Field(default=0)
+    waitlist_count: int = Field(default=0)
 
 
 class AppointmentAgendaItem(BaseModel):
@@ -80,10 +81,12 @@ class AppointmentWeeklySummary(BaseModel):
     confirmed: int = Field(default=0)
     pending: int = Field(default=0)
     cancelled: int = Field(default=0)
+    waitlist_count: int = Field(default=0)
 
 
 class AppointmentDailySummary(BaseModel):
     total: int = Field(default=0)
+    waitlist_count: int = Field(default=0)
 
 
 class AppointmentWeeklyDay(BaseModel):

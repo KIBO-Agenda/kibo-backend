@@ -9,6 +9,7 @@ from app.api.v1.users.router import router as users_router
 from app.api.v1.clients.router import router as clients_router
 from app.api.v1.services.router import router as services_router
 from app.api.v1.appointments.router import router as appointments_router
+from app.api.v1.waitlists.router import router as waitlists_router
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -31,6 +32,7 @@ app.include_router(users_router, prefix=settings.API_V1_PREFIX)
 app.include_router(clients_router, prefix=settings.API_V1_PREFIX)
 app.include_router(services_router, prefix=settings.API_V1_PREFIX)
 app.include_router(appointments_router, prefix=settings.API_V1_PREFIX)
+app.include_router(waitlists_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/health", tags=["health"])
