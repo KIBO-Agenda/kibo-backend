@@ -217,6 +217,11 @@ class AppointmentService:
             appointment_date=target_date,
         )
 
+        # Only filter past slots if the target date is today.
+        today = date.today()
+        now = datetime.now()
+        filter_past_slots = target_date == today
+
         free_slots: list[str] = []
         cursor = open_dt
         while cursor + slot_delta <= close_dt:
@@ -230,6 +235,10 @@ class AppointmentService:
                     break
 
             if not has_conflict:
+                # Exclude past slots only if the date is today
+                if filter_past_slots and cursor < now:
+                    cursor += slot_delta
+                    continue
                 free_slots.append(cursor.strftime("%H:%M"))
             cursor += slot_delta
 
@@ -370,6 +379,7 @@ class AppointmentService:
                 "time_start": row.time_start.strftime("%H:%M"),
                 "time_end": row.time_end.strftime("%H:%M"),
                 "client_name": row.client_name,
+                "client_phone": row.client_phone,
                 "status": row.status,
                 "staff_name": row.staff_name,
                 "service_name": row.service_name,
@@ -434,6 +444,7 @@ class AppointmentService:
                 "time_start": row.time_start.strftime("%H:%M"),
                 "time_end": row.time_end.strftime("%H:%M"),
                 "client_name": row.client_name,
+                "client_phone": row.client_phone,
                 "status": row.status,
                 "staff_name": row.staff_name,
                 "service_name": row.service_name,

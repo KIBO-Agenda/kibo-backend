@@ -315,6 +315,7 @@ class AppointmentRepository:
                 Appointment.time_start.label("time_start"),
                 Appointment.time_end.label("time_end"),
                 Client.name.label("client_name"),
+                Client.phone.label("client_phone"),
                 Appointment.status.label("status"),
                 User.name.label("staff_name"),
                 Service.name.label("service_name"),

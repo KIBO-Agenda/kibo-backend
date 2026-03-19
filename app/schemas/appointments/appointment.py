@@ -62,6 +62,7 @@ class AppointmentAgendaItem(BaseModel):
     time_start: str
     time_end: str
     client_name: str
+    client_phone: str | None
     status: AppointmentStatus
     staff_name: str
     service_name: str
