@@ -36,3 +36,13 @@ class UserResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class UserActivationResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    email: str
+    role: UserRole
+    is_active: bool
+
+    model_config = {"from_attributes": True}

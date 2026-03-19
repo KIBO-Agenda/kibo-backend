@@ -166,7 +166,8 @@ class AppointmentRepository:
         end_date: date,
         user_id: uuid.UUID | None = None,
     ) -> dict[str, int]:
-        stmt = select(
+        stmt = (
+            select(
             func.count(Appointment.id).label("total"),
             func.coalesce(
                 func.sum(
@@ -204,10 +205,21 @@ class AppointmentRepository:
                 ),
                 0,
             ).label("attended"),
-        ).where(
-            Appointment.tenant_id == tenant_id,
-            Appointment.appointment_date >= start_date,
-            Appointment.appointment_date <= end_date,
+            )
+            .select_from(Appointment)
+            .join(
+                User,
+                and_(
+                    User.id == Appointment.user_id,
+                    User.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.appointment_date >= start_date,
+                Appointment.appointment_date <= end_date,
+                User.is_active.is_(True),
+            )
         )
 
         if user_id is not None:
@@ -230,7 +242,8 @@ class AppointmentRepository:
         end_date: date,
         user_id: uuid.UUID | None = None,
     ) -> dict[str, int]:
-        stmt = select(
+        stmt = (
+            select(
             func.count(Appointment.id).label("total"),
             func.coalesce(
                 func.sum(
@@ -259,10 +272,21 @@ class AppointmentRepository:
                 ),
                 0,
             ).label("cancelled"),
-        ).where(
-            Appointment.tenant_id == tenant_id,
-            Appointment.appointment_date >= start_date,
-            Appointment.appointment_date <= end_date,
+            )
+            .select_from(Appointment)
+            .join(
+                User,
+                and_(
+                    User.id == Appointment.user_id,
+                    User.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.appointment_date >= start_date,
+                Appointment.appointment_date <= end_date,
+                User.is_active.is_(True),
+            )
         )
 
         if user_id is not None:
@@ -321,6 +345,7 @@ class AppointmentRepository:
                 Appointment.tenant_id == tenant_id,
                 Appointment.appointment_date >= start_date,
                 Appointment.appointment_date <= end_date,
+                User.is_active.is_(True),
             )
             .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
         )

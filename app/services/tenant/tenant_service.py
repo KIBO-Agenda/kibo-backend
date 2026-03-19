@@ -104,3 +104,12 @@ class TenantService:
                 detail="Tenant not found",
             )
         return tenant
+
+    def get_owner_settings(self, tenant_id: uuid.UUID):
+        tenant = self.tenant_repo.get_by_id(tenant_id)
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found",
+            )
+        return tenant

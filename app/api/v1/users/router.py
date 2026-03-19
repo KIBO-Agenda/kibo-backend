@@ -6,7 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.core.dependencies import get_tenant_id_from_token, require_owner
-from app.schemas.users import UserCreate, UserResponse, UserStaffCreate, UserUpdate
+from app.schemas.users import (
+    UserActivationResponse,
+    UserCreate,
+    UserResponse,
+    UserStaffCreate,
+    UserUpdate,
+)
 from app.services.users import UserService
 from app.models.auth import User
 
@@ -45,6 +51,17 @@ def create_staff_user(
         password=payload.password,
     )
     return UserResponse.model_validate(user)
+
+
+@router.patch("/{user_id}/activate", response_model=UserActivationResponse)
+def activate_staff_user(
+    user_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+):
+    service = UserService(db)
+    user = service.activate_staff_user(owner_user.tenant_id, user_id)
+    return UserActivationResponse.model_validate(user)
 
 
 @router.get("/{user_id}")

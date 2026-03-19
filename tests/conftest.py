@@ -3,7 +3,7 @@ Shared pytest configuration and fixtures for all tests.
 Uses in-memory SQLite to avoid PostgreSQL dependency.
 """
 
-import sys
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Generator
 
@@ -26,7 +26,10 @@ def set_sqlite_pragma(dbapi_conn, connection_record):
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
 
-# Now import models which will use the test engine
+# Import all model modules so Base metadata includes every table.
+import app.models  # noqa: F401
+
+# Now import Base and initialize schema
 from app.db.base import Base
 Base.metadata.create_all(test_engine)
 
@@ -36,6 +39,8 @@ TestSessionLocal = sessionmaker(bind=test_engine, autoflush=False, autocommit=Fa
 @pytest.fixture(scope="function")
 def db() -> Generator[Session, None, None]:
     """Provide clean SQLite session for tests."""
+    Base.metadata.drop_all(bind=test_engine)
+    Base.metadata.create_all(bind=test_engine)
     session = TestSessionLocal()
     yield session
     session.close()
@@ -80,26 +85,14 @@ def sample_tenant(db: Session):
 
 
 @pytest.fixture
-def sample_super_admin(db: Session):
-    """Create a sample super admin for testing."""
-    from app.models.auth import User, UserRole
-    from app.core.security import get_password_hash
-    
-    admin = User(
-        email="admin@example.com",
-        password_hash=get_password_hash("AdminPass123"),
-        role=UserRole.SUPER_ADMIN,
-        is_active=True,
-    )
-    db.add(admin)
-    db.commit()
-    db.refresh(admin)
-    return admin
+def sample_super_admin():
+    """Return synthetic super admin identity for token payloads."""
+    return {"id": str(uuid.uuid4())}
 
 
 @pytest.fixture
 def sample_tenant_user(db: Session, sample_tenant):
-    """Create a sample tenant user for testing."""
+    """Create a sample tenant owner for testing owner-protected endpoints."""
     from app.models.auth import User, UserRole
     from app.core.security import get_password_hash
     
@@ -108,7 +101,7 @@ def sample_tenant_user(db: Session, sample_tenant):
         email="user@example.com",
         password_hash=get_password_hash("UserPass123"),
         name="Test User",
-        role=UserRole.STAFF,
+        role=UserRole.OWNER,
         is_active=True,
     )
     db.add(user)
@@ -122,8 +115,8 @@ def jwt_token_super_admin(sample_super_admin):
     """Generate JWT token for super admin."""
     from app.core.security import create_access_token
     return create_access_token(
-        data={
-            "sub": str(sample_super_admin.id),
+        subject={
+            "sub": sample_super_admin["id"],
             "scope": "super_admin",
         }
     )
@@ -134,8 +127,9 @@ def jwt_token_tenant_user(sample_tenant_user):
     """Generate JWT token for tenant user."""
     from app.core.security import create_access_token
     return create_access_token(
-        data={
+        subject={
             "sub": str(sample_tenant_user.id),
+            "scope": "tenant_user",
             "tenant_id": str(sample_tenant_user.tenant_id),
         }
     )

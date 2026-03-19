@@ -22,7 +22,7 @@ class ServiceResponse(BaseModel):
     tenant_id: uuid.UUID
     name: str
     duration: int
-    price: Decimal
+    price: Decimal | None
     is_active: bool
     created_at: datetime
 

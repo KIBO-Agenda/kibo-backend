@@ -31,6 +31,8 @@ class AppointmentService:
         assigned_user = self.user_repo.get_by_id(tenant_id, user_id)
         if not assigned_user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assigned user not found")
+        if not assigned_user.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assigned user is inactive")
 
         service = self.service_repo.get_by_id(tenant_id, service_id)
         if not service or not service.is_active:
@@ -172,6 +174,8 @@ class AppointmentService:
         staff_user = self.user_repo.get_by_id(tenant_id, selected_staff_id)
         if not staff_user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assigned user not found")
+        if not staff_user.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Staff user is inactive")
 
         tenant = self.tenant_repo.get_by_id(tenant_id)
         if not tenant:

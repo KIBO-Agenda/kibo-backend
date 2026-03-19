@@ -48,6 +48,16 @@ def update_tenant_settings(
     return TenantResponse.model_validate(tenant)
 
 
+@router.get("/settings", response_model=TenantResponse)
+def get_tenant_settings(
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+):
+    service = TenantService(db)
+    tenant = service.get_owner_settings(owner_user.tenant_id)
+    return TenantResponse.model_validate(tenant)
+
+
 @router.get("/{tenant_id}")
 def get_tenant(
     tenant_id: uuid.UUID,

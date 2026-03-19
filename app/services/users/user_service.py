@@ -1,4 +1,5 @@
 import uuid
+import logging
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -15,6 +16,23 @@ class UserService:
     def __init__(self, db: Session) -> None:
         self.user_repo = UserRepository(db)
         self.tenant_repo = TenantRepository(db)
+        self.logger = logging.getLogger(__name__)
+
+    def _enforce_active_staff_limit(self, tenant_id: uuid.UUID) -> None:
+        tenant = self.tenant_repo.get_by_id(tenant_id)
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found",
+            )
+
+        # Plan quota counts active staff only. Owner is intentionally excluded.
+        active_staff = self.user_repo.count_staff_by_tenant(tenant_id, only_active=True)
+        if active_staff >= tenant.max_users:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Limite de especialistas alcanzado",
+            )
 
     def create_user(
         self,
@@ -105,6 +123,10 @@ class UserService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
+        self.logger.info(
+            "Audit: staff deactivated",
+            extra={"tenant_id": str(tenant_id), "user_id": str(user_id), "action": "deactivate_staff"},
+        )
 
     def create_staff_user(
         self,
@@ -114,19 +136,7 @@ class UserService:
         name: str,
         password: str,
     ):
-        tenant = self.tenant_repo.get_by_id(tenant_id)
-        if not tenant:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Tenant not found",
-            )
-
-        current_users = self.user_repo.count_by_tenant(tenant_id, only_active=True)
-        if current_users >= tenant.max_users:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Limite de especialistas alcanzado",
-            )
+        self._enforce_active_staff_limit(tenant_id)
 
         normalized_email = email.strip().lower()
         existing_by_email = self.user_repo.get_by_email(tenant_id, normalized_email)
@@ -144,3 +154,38 @@ class UserService:
             password_hash=password_hash,
             role=UserRole.STAFF.value,
         )
+
+    def activate_staff_user(self, tenant_id: uuid.UUID, user_id: uuid.UUID):
+        user = self.user_repo.get_by_id(tenant_id, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+
+        if user.role != UserRole.STAFF:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only staff users can be activated",
+            )
+
+        if user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User is already active",
+            )
+
+        self._enforce_active_staff_limit(tenant_id)
+
+        activated = self.user_repo.update(tenant_id, user_id, is_active=True)
+        if not activated:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+
+        self.logger.info(
+            "Audit: staff activated",
+            extra={"tenant_id": str(tenant_id), "user_id": str(user_id), "action": "activate_staff"},
+        )
+        return activated
