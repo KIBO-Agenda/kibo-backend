@@ -4,6 +4,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.models.auth import User
+from app.models.auth import UserRole
 
 
 class UserRepository:
@@ -60,6 +61,21 @@ class UserRepository:
             .order_by(User.created_at.desc())
         )
         return list(self.db.execute(stmt).scalars().all())
+
+    def count_by_tenant(self, tenant_id: uuid.UUID, *, only_active: bool = True) -> int:
+        stmt = select(func.count(User.id)).where(User.tenant_id == tenant_id)
+        if only_active:
+            stmt = stmt.where(User.is_active.is_(True))
+        return int(self.db.execute(stmt).scalar_one() or 0)
+
+    def count_staff_by_tenant(self, tenant_id: uuid.UUID, *, only_active: bool = True) -> int:
+        stmt = select(func.count(User.id)).where(
+            User.tenant_id == tenant_id,
+            User.role == UserRole.STAFF,
+        )
+        if only_active:
+            stmt = stmt.where(User.is_active.is_(True))
+        return int(self.db.execute(stmt).scalar_one() or 0)
 
     def update(
         self,

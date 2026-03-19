@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.models.tenant import Tenant
+from app.models.tenant.tenant import Tenant, default_business_hours
 
 
 class TenantRepository:
@@ -13,8 +13,26 @@ class TenantRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
 
+    @staticmethod
+    def _normalize_business_hours(business_hours: dict | None) -> dict | None:
+        if business_hours is None:
+            return None
+        normalized: dict = {}
+        for day, value in business_hours.items():
+            if hasattr(value, "model_dump"):
+                normalized[day] = value.model_dump()
+            else:
+                normalized[day] = value
+        return normalized
+
     def create(
-        self, *, name: str, phone: str | None, slot_duration: int = 15
+        self,
+        *,
+        name: str,
+        phone: str | None,
+        slot_duration: int = 15,
+        max_users: int = 5,
+        business_hours: dict | None = None,
     ) -> Tenant:
         """Create new tenant with initial subscription (30 days from now)."""
         now = datetime.now(timezone.utc)
@@ -22,6 +40,8 @@ class TenantRepository:
             name=name,
             phone=phone,
             slot_duration=slot_duration,
+            max_users=max_users,
+            business_hours=self._normalize_business_hours(business_hours) or default_business_hours(),
             subscription_valid_until=now + timedelta(days=30),
         )
         self.db.add(tenant)
@@ -46,6 +66,8 @@ class TenantRepository:
         name: str | None = None,
         phone: str | None = None,
         slot_duration: int | None = None,
+        max_users: int | None = None,
+        business_hours: dict | None = None,
     ) -> Tenant | None:
         """Update tenant fields selectively."""
         tenant = self.get_by_id(tenant_id)
@@ -58,6 +80,10 @@ class TenantRepository:
             tenant.phone = phone
         if slot_duration is not None:
             tenant.slot_duration = slot_duration
+        if max_users is not None:
+            tenant.max_users = max_users
+        if business_hours is not None:
+            tenant.business_hours = self._normalize_business_hours(business_hours)
 
         self.db.commit()
         self.db.refresh(tenant)

@@ -93,6 +93,22 @@ def list_appointments(
     return [AppointmentResponse.model_validate(entity) for entity in entities]
 
 
+@router.get("/availability")
+def get_availability(
+    query_date: Annotated[date, Query(alias="date")],
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    staff_id: Annotated[uuid.UUID | None, Query()] = None,
+):
+    service = AppointmentService(db)
+    return service.get_availability(
+        current_user.tenant_id,
+        current_user,
+        target_date=query_date,
+        staff_id=staff_id,
+    )
+
+
 @router.patch("/{appointment_id}/status")
 def change_appointment_status(
     appointment_id: uuid.UUID,

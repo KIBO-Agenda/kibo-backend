@@ -1,3 +1,3 @@
-from app.schemas.users.user import UserCreate, UserResponse, UserUpdate
+from app.schemas.users.user import UserCreate, UserResponse, UserStaffCreate, UserUpdate
 
-__all__ = ["UserCreate", "UserUpdate", "UserResponse"]
+__all__ = ["UserCreate", "UserStaffCreate", "UserUpdate", "UserResponse"]

@@ -3,7 +3,7 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.security import get_password_hash, verify_password
+from app.core.security import get_password_hash
 from app.models.auth import UserRole
 from app.repositories.users import UserRepository
 from app.repositories.tenant import TenantRepository
@@ -105,3 +105,42 @@ class UserService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
+
+    def create_staff_user(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        email: str,
+        name: str,
+        password: str,
+    ):
+        tenant = self.tenant_repo.get_by_id(tenant_id)
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found",
+            )
+
+        current_users = self.user_repo.count_by_tenant(tenant_id, only_active=True)
+        if current_users >= tenant.max_users:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Limite de especialistas alcanzado",
+            )
+
+        normalized_email = email.strip().lower()
+        existing_by_email = self.user_repo.get_by_email(tenant_id, normalized_email)
+        if existing_by_email:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already in use",
+            )
+
+        password_hash = get_password_hash(password)
+        return self.user_repo.create(
+            tenant_id=tenant_id,
+            email=normalized_email,
+            name=name,
+            password_hash=password_hash,
+            role=UserRole.STAFF.value,
+        )

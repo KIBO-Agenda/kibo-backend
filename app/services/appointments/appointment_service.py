@@ -9,6 +9,7 @@ from app.models.auth import User, UserRole
 from app.repositories.appointments import AppointmentRepository
 from app.repositories.clients import ClientRepository
 from app.repositories.services import ServiceRepository
+from app.repositories.tenant import TenantRepository
 from app.repositories.users import UserRepository
 
 
@@ -17,6 +18,7 @@ class AppointmentService:
         self.appointment_repo = AppointmentRepository(db)
         self.client_repo = ClientRepository(db)
         self.service_repo = ServiceRepository(db)
+        self.tenant_repo = TenantRepository(db)
         self.user_repo = UserRepository(db)
 
     def _validate_references(
@@ -86,6 +88,149 @@ class AppointmentService:
         end_dt = start_dt + timedelta(minutes=duration_minutes)
         return end_dt.time()
 
+    @staticmethod
+    def _parse_hhmm(value: str) -> time:
+        try:
+            return datetime.strptime(value, "%H:%M").time()
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid business hours format. Expected HH:MM",
+            ) from exc
+
+    def _get_day_business_window(self, tenant_id: uuid.UUID, target_date: date) -> tuple[time, time]:
+        tenant = self.tenant_repo.get_by_id(tenant_id)
+        if not tenant:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+        business_hours = getattr(tenant, "business_hours", None) or {}
+        weekday_key = [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        ][target_date.weekday()]
+        day_config = business_hours.get(weekday_key)
+
+        if not day_config or not day_config.get("is_open", False):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Fuera del horario de atención.",
+            )
+
+        open_str = day_config.get("open")
+        close_str = day_config.get("close")
+        if not open_str or not close_str:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Fuera del horario de atención.",
+            )
+
+        open_time = self._parse_hhmm(open_str)
+        close_time = self._parse_hhmm(close_str)
+        if open_time >= close_time:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Fuera del horario de atención.",
+            )
+        return open_time, close_time
+
+    def _validate_within_business_hours(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        appointment_date: date,
+        time_start: time,
+        time_end: time,
+    ) -> None:
+        open_time, close_time = self._get_day_business_window(tenant_id, appointment_date)
+        if time_start < open_time or time_end > close_time:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Fuera del horario de atención.",
+            )
+
+    def get_availability(
+        self,
+        tenant_id: uuid.UUID,
+        current_user: User,
+        *,
+        target_date: date,
+        staff_id: uuid.UUID | None,
+    ) -> list[str]:
+        # Staff cannot query availability for other employees.
+        selected_staff_id = current_user.id if current_user.role == UserRole.STAFF else staff_id
+        if selected_staff_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="staff_id is required for availability lookup",
+            )
+
+        staff_user = self.user_repo.get_by_id(tenant_id, selected_staff_id)
+        if not staff_user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assigned user not found")
+
+        tenant = self.tenant_repo.get_by_id(tenant_id)
+        if not tenant:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+        business_hours = getattr(tenant, "business_hours", None) or {}
+        weekday_key = [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday",
+            "saturday",
+            "sunday",
+        ][target_date.weekday()]
+        day_config = business_hours.get(weekday_key)
+
+        if not day_config or not day_config.get("is_open", False):
+            return []
+
+        open_str = day_config.get("open")
+        close_str = day_config.get("close")
+        if not open_str or not close_str:
+            return []
+
+        open_time = self._parse_hhmm(open_str)
+        close_time = self._parse_hhmm(close_str)
+        if open_time >= close_time:
+            return []
+
+        slot_minutes = max(int(tenant.slot_duration), 1)
+        slot_delta = timedelta(minutes=slot_minutes)
+        open_dt = datetime.combine(target_date, open_time)
+        close_dt = datetime.combine(target_date, close_time)
+
+        occupied = self.appointment_repo.list_active_by_user_on_date(
+            tenant_id=tenant_id,
+            user_id=selected_staff_id,
+            appointment_date=target_date,
+        )
+
+        free_slots: list[str] = []
+        cursor = open_dt
+        while cursor + slot_delta <= close_dt:
+            slot_end = cursor + slot_delta
+            has_conflict = False
+            for appt in occupied:
+                appt_start = datetime.combine(target_date, appt.time_start)
+                appt_end = datetime.combine(target_date, appt.time_end)
+                if appt_start < slot_end and appt_end > cursor:
+                    has_conflict = True
+                    break
+
+            if not has_conflict:
+                free_slots.append(cursor.strftime("%H:%M"))
+            cursor += slot_delta
+
+        return free_slots
+
     def create_appointment(
         self,
         tenant_id: uuid.UUID,
@@ -125,6 +270,13 @@ class AppointmentService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Appointment duration exceeds day boundary",
             )
+
+        self._validate_within_business_hours(
+            tenant_id,
+            appointment_date=appointment_date,
+            time_start=time_start,
+            time_end=time_end,
+        )
 
         if self.appointment_repo.has_overlap(
             tenant_id=tenant_id,
@@ -442,6 +594,13 @@ class AppointmentService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Appointment duration exceeds day boundary",
             )
+
+        self._validate_within_business_hours(
+            tenant_id,
+            appointment_date=new_date,
+            time_start=new_time_start,
+            time_end=new_time_end,
+        )
 
         if self.appointment_repo.has_overlap(
             tenant_id=tenant_id,

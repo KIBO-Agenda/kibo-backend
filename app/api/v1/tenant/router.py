@@ -1,12 +1,14 @@
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Depends, Header, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import require_owner
 from app.db.session import get_db
 from app.core.dependencies import get_super_admin_id_from_token
-from app.schemas.tenant import TenantCreate, TenantResponse, TenantUpdate
+from app.models.auth import User
+from app.schemas.tenant import TenantCreate, TenantResponse, TenantSettingsUpdate, TenantUpdate
 from app.services.tenant import TenantService
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
@@ -24,6 +26,24 @@ def create_tenant(
         name=payload.name,
         phone=payload.phone,
         slot_duration=payload.slot_duration,
+        max_users=payload.max_users,
+    )
+    return TenantResponse.model_validate(tenant)
+
+
+@router.patch("/settings")
+def update_tenant_settings(
+    payload: TenantSettingsUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+):
+    service = TenantService(db)
+    tenant = service.update_owner_settings(
+        owner_user.tenant_id,
+        name=payload.name,
+        phone=payload.phone,
+        slot_duration=payload.slot_duration,
+        business_hours=payload.business_hours,
     )
     return TenantResponse.model_validate(tenant)
 
@@ -65,5 +85,7 @@ def update_tenant(
         name=payload.name,
         phone=payload.phone,
         slot_duration=payload.slot_duration,
+        max_users=payload.max_users,
+        business_hours=payload.business_hours,
     )
     return TenantResponse.model_validate(tenant)

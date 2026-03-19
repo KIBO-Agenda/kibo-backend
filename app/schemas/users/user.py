@@ -13,6 +13,12 @@ class UserCreate(BaseModel):
     role: UserRole = Field(default=UserRole.STAFF)
 
 
+class UserStaffCreate(BaseModel):
+    email: EmailStr
+    name: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=8, max_length=128)
+
+
 class UserUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     role: UserRole | None = None

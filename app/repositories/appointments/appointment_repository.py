@@ -70,6 +70,25 @@ class AppointmentRepository:
         stmt = stmt.order_by(Appointment.appointment_date.desc(), Appointment.time_start.asc())
         return list(self.db.execute(stmt).scalars().all())
 
+    def list_active_by_user_on_date(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        appointment_date: date,
+    ) -> list[Appointment]:
+        stmt = (
+            select(Appointment)
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.user_id == user_id,
+                Appointment.appointment_date == appointment_date,
+                Appointment.status != AppointmentStatus.CANCELLED,
+            )
+            .order_by(Appointment.time_start.asc())
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
     def has_overlap(
         self,
         *,

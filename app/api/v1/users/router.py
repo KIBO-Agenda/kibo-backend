@@ -5,10 +5,10 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.core.dependencies import get_tenant_id_from_token
-from app.schemas.users import UserCreate, UserResponse, UserUpdate
+from app.core.dependencies import get_tenant_id_from_token, require_owner
+from app.schemas.users import UserCreate, UserResponse, UserStaffCreate, UserUpdate
 from app.services.users import UserService
-from app.models.auth import UserRole
+from app.models.auth import User
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -17,18 +17,32 @@ router = APIRouter(prefix="/users", tags=["users"])
 def create_user(
     payload: UserCreate,
     db: Annotated[Session, Depends(get_db)],
-    tenant_id_str: Annotated[str, Depends(get_tenant_id_from_token)],
+    owner_user: Annotated[User, Depends(require_owner)],
 ):
     """Create user in tenant (owner only)."""
-    tenant_id = uuid.UUID(tenant_id_str)
-    
     service = UserService(db)
     user = service.create_user(
-        tenant_id,
+        owner_user.tenant_id,
         email=payload.email,
         name=payload.name,
         password=payload.password,
         role=payload.role,
+    )
+    return UserResponse.model_validate(user)
+
+
+@router.post("/staff", status_code=status.HTTP_201_CREATED)
+def create_staff_user(
+    payload: UserStaffCreate,
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+):
+    service = UserService(db)
+    user = service.create_staff_user(
+        owner_user.tenant_id,
+        email=payload.email,
+        name=payload.name,
+        password=payload.password,
     )
     return UserResponse.model_validate(user)
 
