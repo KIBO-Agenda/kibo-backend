@@ -1,7 +1,7 @@
 import uuid
-from datetime import date, time
+from datetime import date, datetime, time
 
-from sqlalchemy import and_, case, func, select
+from sqlalchemy import and_, case, func, select, update
 from sqlalchemy.orm import Session
 
 from app.models.appointments import Appointment, AppointmentStatus
@@ -355,3 +355,47 @@ class AppointmentRepository:
             stmt = stmt.where(Appointment.user_id == user_id)
 
         return list(self.db.execute(stmt).all())
+
+    def mark_past_confirmed_as_attended(self, tenant_id: uuid.UUID) -> int:
+        """
+        Marks all past confirmed appointments as attended.
+        
+        An appointment is considered past if:
+        - Its appointment_date is before today, OR
+        - Its appointment_date is today AND its time_end has passed
+        
+        Returns the number of appointments updated.
+        """
+        now = datetime.now()
+        today = now.date()
+        current_time = now.time()
+        
+        # Update confirmed appointments from before today
+        stmt_past_days = (
+            update(Appointment)
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.CONFIRMED,
+                Appointment.appointment_date < today,
+            )
+            .values(status=AppointmentStatus.ATTENDED)
+        )
+        result_past_days = self.db.execute(stmt_past_days)
+        
+        # Update confirmed appointments from today that have already ended
+        stmt_today = (
+            update(Appointment)
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.CONFIRMED,
+                Appointment.appointment_date == today,
+                Appointment.time_end <= current_time,
+            )
+            .values(status=AppointmentStatus.ATTENDED)
+        )
+        result_today = self.db.execute(stmt_today)
+        
+        self.db.commit()
+        
+        total_updated = result_past_days.rowcount + result_today.rowcount
+        return total_updated

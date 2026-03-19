@@ -335,6 +335,9 @@ class AppointmentService:
         *,
         appointment_date: date | None = None,
     ):
+        # Automatically mark past confirmed appointments as attended
+        self.appointment_repo.mark_past_confirmed_as_attended(tenant_id)
+        
         if current_user.role == UserRole.STAFF:
             return self.appointment_repo.list_by_user(
                 tenant_id,
@@ -351,6 +354,9 @@ class AppointmentService:
         start_date: date,
         end_date: date | None = None,
     ) -> dict:
+        # Automatically mark past confirmed appointments as attended
+        self.appointment_repo.mark_past_confirmed_as_attended(tenant_id)
+        
         if end_date is None:
             end_date = start_date
 
@@ -409,6 +415,9 @@ class AppointmentService:
         start_date: date,
         staff_id: uuid.UUID | None = None,
     ) -> dict:
+        # Automatically mark past confirmed appointments as attended
+        self.appointment_repo.mark_past_confirmed_as_attended(tenant_id)
+        
         end_date = start_date + timedelta(days=6)
         selected_user_id: uuid.UUID | None = None
 
