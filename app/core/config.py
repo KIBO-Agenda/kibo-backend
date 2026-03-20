@@ -40,9 +40,9 @@ class Settings:
         if origin.strip()
     ] or ["*"]
 
-    _raw_db_url: str = getenv("DATABASE_URL", "")
-    DATABASE_URL: str = _raw_db_url.replace("postgres://", "postgresql+psycopg://", 1) if _raw_db_url.startswith("postgres://") else _raw_db_url
-
+    _raw_url = getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/agenda")
+    # Forzamos a que use postgresql+psycopg2 para asegurar compatibilidad con la librería instalada
+    DATABASE_URL = _raw_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
