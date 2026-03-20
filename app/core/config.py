@@ -36,9 +36,12 @@ class Settings:
     SMTP_SENDER_EMAIL: str = getenv("SMTP_SENDER_EMAIL", "no-reply@agenda.local")
     BACKEND_CORS_ORIGINS: list[str] = [
         origin.strip()
-        for origin in getenv("BACKEND_CORS_ORIGINS").split(",")
+        for origin in getenv("BACKEND_CORS_ORIGINS", "").split(",")
         if origin.strip()
-    ]
+    ] or ["*"]
+
+    _raw_db_url: str = getenv("DATABASE_URL", "")
+    DATABASE_URL: str = _raw_db_url.replace("postgres://", "postgresql+psycopg://", 1) if _raw_db_url.startswith("postgres://") else _raw_db_url
 
 
 @lru_cache(maxsize=1)
