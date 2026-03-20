@@ -119,6 +119,7 @@ class TenantResponse(BaseModel):
     phone: str | None
     subscription_status: SubscriptionStatus
     subscription_valid_until: datetime
+    trial_ends_at: datetime
     slot_duration: int
     max_users: int
     business_hours: BusinessHours

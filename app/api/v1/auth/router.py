@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_tenant_user
@@ -11,6 +11,8 @@ from app.schemas.auth import (
     CurrentSessionResponse,
     ForgotPasswordRequest,
     MessageResponse,
+    RegisterRequest,
+    RegisterResponse,
     ResetPasswordRequest,
     SuperAdminLoginRequest,
     TokenPairResponse,
@@ -42,6 +44,21 @@ def login_user(
         password=payload.password,
     )
     return TokenPairResponse(access_token=access_token, refresh_token=refresh_token)
+
+
+@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+def register_public_owner(
+    payload: RegisterRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    service = AuthService(db)
+    data = service.register_public_owner(
+        email=payload.email,
+        password=payload.password,
+        full_name=payload.full_name,
+        business_name=payload.business_name,
+    )
+    return RegisterResponse.model_validate(data)
 
 
 @router.post("/super-admin/login")

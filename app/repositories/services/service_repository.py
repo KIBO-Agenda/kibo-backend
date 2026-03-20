@@ -21,7 +21,7 @@ class ServiceRepository:
         stmt = select(Service).where(and_(Service.tenant_id == tenant_id, Service.id == service_id))
         return self.db.execute(stmt).scalar_one_or_none()
 
-    def list_by_tenant(self, tenant_id: uuid.UUID, *, only_active: bool = False) -> list[Service]:
+    def list_by_tenant(self, tenant_id: uuid.UUID, *, only_active: bool = True) -> list[Service]:
         stmt = select(Service).where(Service.tenant_id == tenant_id)
         if only_active:
             stmt = stmt.where(Service.is_active.is_(True))

@@ -32,17 +32,20 @@ class TenantRepository:
         phone: str | None,
         slot_duration: int = 15,
         max_users: int = 5,
+        trial_days: int = 30,
         business_hours: dict | None = None,
     ) -> Tenant:
-        """Create new tenant with initial subscription (30 days from now)."""
+        """Create new tenant with initial subscription and trial period."""
         now = datetime.now(timezone.utc)
+        trial_ends_at = now + timedelta(days=trial_days)
         tenant = Tenant(
             name=name,
             phone=phone,
             slot_duration=slot_duration,
             max_users=max_users,
             business_hours=self._normalize_business_hours(business_hours) or default_business_hours(),
-            subscription_valid_until=now + timedelta(days=30),
+            subscription_valid_until=trial_ends_at,
+            trial_ends_at=trial_ends_at,
         )
         self.db.add(tenant)
         self.db.commit()

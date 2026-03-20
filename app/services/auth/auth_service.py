@@ -1,6 +1,8 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -14,7 +16,9 @@ from app.core.security import (
     verify_password,
 )
 from app.models.auth import User
+from app.models.auth import UserRole
 from app.models.super_admin import SuperAdmin
+from app.models.tenant import SubscriptionStatus, Tenant
 from app.repositories.auth import AuthRepository
 from app.repositories.super_admin import SuperAdminRepository
 from app.repositories.tenant import TenantRepository
@@ -22,10 +26,87 @@ from app.repositories.tenant import TenantRepository
 
 class AuthService:
     def __init__(self, db: Session) -> None:
+        self.db = db
         self.auth_repository = AuthRepository(db)
         self.super_admin_repository = SuperAdminRepository(db)
         self.tenant_repository = TenantRepository(db)
         self.settings = get_settings()
+
+    def register_public_owner(
+        self,
+        *,
+        email: str,
+        password: str,
+        full_name: str,
+        business_name: str,
+    ) -> dict:
+        normalized_email = email.strip().lower()
+        normalized_name = full_name.strip()
+        normalized_business_name = business_name.strip()
+
+        now = datetime.now(timezone.utc)
+        trial_ends_at = now + timedelta(days=15)
+        password_hash = get_password_hash(password)
+
+        tenant = Tenant(
+            name=normalized_business_name,
+            phone=None,
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_valid_until=trial_ends_at,
+            trial_ends_at=trial_ends_at,
+        )
+
+        user: User | None = None
+
+        try:
+            existing_user = self.auth_repository.get_user_by_email(email=normalized_email)
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Email already in use",
+                )
+
+            self.db.add(tenant)
+            self.db.flush()
+
+            user = User(
+                tenant_id=tenant.id,
+                name=normalized_name,
+                email=normalized_email,
+                password_hash=password_hash,
+                role=UserRole.OWNER,
+                is_active=True,
+            )
+            self.db.add(user)
+            self.db.flush()
+            self.db.commit()
+        except HTTPException:
+            self.db.rollback()
+            raise
+        except IntegrityError as exc:
+            self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already in use",
+            ) from exc
+
+        self.db.refresh(tenant)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Could not create owner user",
+            )
+
+        self.db.refresh(user)
+
+        return {
+            "tenant_id": tenant.id,
+            "user_id": user.id,
+            "email": user.email,
+            "full_name": user.name,
+            "business_name": tenant.name,
+            "trial_ends_at": tenant.trial_ends_at,
+        }
 
     def get_current_session(self, current_user: User) -> dict:
         tenant = self.tenant_repository.get_by_id(current_user.tenant_id)

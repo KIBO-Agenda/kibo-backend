@@ -6,6 +6,21 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _parse_cors_origins(raw_origins: str | None, frontend_url: str) -> list[str]:
+    if raw_origins is None:
+        return [frontend_url]
+
+    normalized = raw_origins.strip()
+    if not normalized:
+        return [frontend_url]
+
+    if normalized == "*":
+        return ["*"]
+
+    origins = [origin.strip() for origin in normalized.split(",") if origin.strip()]
+    return origins or [frontend_url]
+
+
 class Settings:
     """Application settings loaded from environment variables."""
 
@@ -34,15 +49,10 @@ class Settings:
     SMTP_PASSWORD: str | None = getenv("SMTP_PASSWORD")
     SMTP_USE_TLS: bool = getenv("SMTP_USE_TLS", "true").lower() == "true"
     SMTP_SENDER_EMAIL: str = getenv("SMTP_SENDER_EMAIL", "no-reply@agenda.local")
-    BACKEND_CORS_ORIGINS: list[str] = [
-        origin.strip()
-        for origin in getenv("BACKEND_CORS_ORIGINS", "").split(",")
-        if origin.strip()
-    ] or ["*"]
-
-    _raw_url = getenv("DATABASE_URL", "postgresql://postgres:root@localhost:5432/agenda")
-    # Forzamos a que use postgresql+psycopg2 para asegurar compatibilidad con la librería instalada
-    DATABASE_URL = _raw_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    BACKEND_CORS_ORIGINS: list[str] = _parse_cors_origins(
+        getenv("BACKEND_CORS_ORIGINS"),
+        FRONTEND_URL,
+    )
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

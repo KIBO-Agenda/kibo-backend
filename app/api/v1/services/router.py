@@ -1,7 +1,7 @@
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_tenant_user, require_owner
@@ -44,10 +44,9 @@ def get_service(
 def list_services(
     db: Annotated[Session, Depends(get_db)],
     current_user: Annotated[User, Depends(get_current_tenant_user)],
-    only_active: Annotated[bool, Query()] = False,
 ):
     service = ServiceService(db)
-    entities = service.list_services(current_user.tenant_id, only_active=only_active)
+    entities = service.list_services(current_user.tenant_id)
     return [ServiceResponse.model_validate(entity) for entity in entities]
 
 

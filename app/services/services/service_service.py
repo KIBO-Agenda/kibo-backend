@@ -24,8 +24,8 @@ class ServiceService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
         return entity
 
-    def list_services(self, tenant_id: uuid.UUID, *, only_active: bool = False):
-        return self.service_repo.list_by_tenant(tenant_id, only_active=only_active)
+    def list_services(self, tenant_id: uuid.UUID):
+        return self.service_repo.list_by_tenant(tenant_id, only_active=True)
 
     def update_service(
         self,

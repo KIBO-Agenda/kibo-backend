@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from app.models.tenant import TenantPayment
@@ -52,3 +52,7 @@ class PaymentRepository:
         """Prevent duplicate payments via unique reference code."""
         stmt = select(TenantPayment).where(TenantPayment.reference_code == reference_code)
         return self.db.execute(stmt).scalar_one_or_none()
+
+    def has_any_by_tenant(self, tenant_id: uuid.UUID) -> bool:
+        stmt = select(func.count(TenantPayment.id)).where(TenantPayment.tenant_id == tenant_id)
+        return int(self.db.execute(stmt).scalar_one() or 0) > 0

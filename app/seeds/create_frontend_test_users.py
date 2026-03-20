@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from datetime import datetime, timezone
+from datetime import timedelta
 
 from sqlalchemy import func
 
@@ -47,11 +48,13 @@ def ensure_super_admin(db):
 def ensure_tenant(db, name: str, phone: str):
     entity = db.query(Tenant).filter(Tenant.name == name).first()
     if not entity:
+        now = datetime.now(timezone.utc)
         entity = Tenant(
             name=name,
             phone=phone,
             subscription_status=SubscriptionStatus.ACTIVE,
-            subscription_valid_until=datetime.now(timezone.utc),
+            subscription_valid_until=now + timedelta(days=30),
+            trial_ends_at=now + timedelta(days=15),
             slot_duration=15,
         )
         db.add(entity)

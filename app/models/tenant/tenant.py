@@ -49,6 +49,9 @@ class Tenant(Base):
     subscription_valid_until: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    trial_ends_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     slot_duration: Mapped[int] = mapped_column(
         nullable=False, default=15
     )

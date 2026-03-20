@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from app.models.auth.user import UserRole
 
@@ -63,3 +63,19 @@ class CurrentSessionResponse(BaseModel):
     role: UserRole
     tenant_id: uuid.UUID
     tenant: CurrentSessionTenant
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    full_name: str = Field(min_length=1, max_length=255)
+    business_name: str = Field(min_length=1, max_length=255)
+
+
+class RegisterResponse(BaseModel):
+    tenant_id: uuid.UUID
+    user_id: uuid.UUID
+    email: EmailStr
+    full_name: str
+    business_name: str
+    trial_ends_at: datetime

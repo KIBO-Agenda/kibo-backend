@@ -1,4 +1,5 @@
 from typing import Annotated
+from datetime import datetime, timezone
 import uuid
 
 from fastapi import Depends, Header, HTTPException, status
@@ -7,6 +8,40 @@ from sqlalchemy.orm import Session
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.auth import User, UserRole
+from app.repositories.tenant import PaymentRepository, TenantRepository
+
+
+def _ensure_tenant_trial_or_payment(db: Session, tenant_id: uuid.UUID) -> None:
+    tenant_repo = TenantRepository(db)
+    payment_repo = PaymentRepository(db)
+
+    tenant = tenant_repo.get_by_id(tenant_id)
+    if not tenant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tenant not found",
+        )
+
+    trial_ends_at = getattr(tenant, "trial_ends_at", None)
+    if not trial_ends_at:
+        return
+
+    now = datetime.now(timezone.utc)
+    trial_reference = (
+        trial_ends_at
+        if trial_ends_at.tzinfo is not None
+        else trial_ends_at.replace(tzinfo=timezone.utc)
+    )
+    if now < trial_reference:
+        return
+
+    if payment_repo.has_any_by_tenant(tenant_id):
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Tu periodo de prueba ha terminado. Contacta a soporte o realiza un pago",
+    )
 
 
 def get_tenant_id_from_token(
@@ -116,7 +151,17 @@ def get_current_tenant_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
+
+    _ensure_tenant_trial_or_payment(db, tenant_id)
     return user
+
+
+def check_tenant_active(
+    current_user: Annotated[User, Depends(get_current_tenant_user)],
+    db: Session = Depends(get_db),
+) -> User:
+    _ensure_tenant_trial_or_payment(db, current_user.tenant_id)
+    return current_user
 
 
 def require_owner(
