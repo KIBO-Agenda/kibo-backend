@@ -2,13 +2,17 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PATH="/usr/local/bin:${PATH}"
 
 WORKDIR /app
 
 # Install dependencies first to maximize Docker layer cache reuse.
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && python -m uvicorn --version \
+    && printf '#!/bin/sh\nexec python -m uvicorn "$@"\n' > /usr/local/bin/uvicorn \
+    && chmod +x /usr/local/bin/uvicorn
 
 # Copy app source after dependencies.
 COPY . .
