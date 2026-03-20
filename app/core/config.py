@@ -36,7 +36,7 @@ class Settings:
     SMTP_SENDER_EMAIL: str = getenv("SMTP_SENDER_EMAIL", "no-reply@agenda.local")
     BACKEND_CORS_ORIGINS: list[str] = [
         origin.strip()
-        for origin in getenv("BACKEND_CORS_ORIGINS", "http://localhost:3000").split(",")
+        for origin in getenv("BACKEND_CORS_ORIGINS").split(",")
         if origin.strip()
     ]
 
