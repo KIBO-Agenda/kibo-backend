@@ -2,25 +2,29 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PATH="/usr/local/bin:${PATH}"
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-# Install dependencies first to maximize Docker layer cache reuse.
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
-    && python -m uvicorn --version \
-    && printf '#!/bin/sh\nexec python -m uvicorn "$@"\n' > /usr/local/bin/uvicorn \
-    && chmod +x /usr/local/bin/uvicorn
+# Install system dependencies needed for psycopg (PostgreSQL driver)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy app source after dependencies.
+# Install Python dependencies first to maximize layer cache reuse
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application source
 COPY . .
 
-# Run as non-root user in production.
-RUN adduser --disabled-password --gecos "" appuser && chown -R appuser:appuser /app
+# Create non-root user and transfer ownership
+RUN adduser --disabled-password --gecos "" appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Run Alembic migrations then start the server
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
