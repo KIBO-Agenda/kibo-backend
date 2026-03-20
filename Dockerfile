@@ -1,30 +1,35 @@
 FROM python:3.12-slim
 
+# Evita que Python genere archivos .pyc y asegura que los logs salgan directo a la consola
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/code 
 
-WORKDIR /app
+WORKDIR /code
 
-# Install system dependencies needed for psycopg (PostgreSQL driver)
+# Dependencias del sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies first to maximize layer cache reuse
-COPY requirements.txt ./
+# Dependencias de Python
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application source
+# Copiamos todo el proyecto al directorio /code
 COPY . .
 
-# Create non-root user and transfer ownership
+# Permisos de usuario
 RUN adduser --disabled-password --gecos "" appuser \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /code
 USER appuser
 
+# Exponemos el puerto
 EXPOSE 8000
 
-# Run Alembic migrations then start the server
+# Comando de inicio: 
+# 1. Corremos migraciones.
+# 2. Arrancamos uvicorn apuntando a la carpeta app.main
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
