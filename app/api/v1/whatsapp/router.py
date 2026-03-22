@@ -4,9 +4,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_owner
+from app.core.dependencies import check_plan_permission, require_owner
 from app.db.session import get_db
 from app.models.auth import User
+from app.models.tenant import PlanTier
 from app.schemas.whatsapp import (
     OutboxEnqueueRequest,
     OutboxStatsResponse,
@@ -97,6 +98,7 @@ def _extract_text(payload: dict[str, Any]) -> str | None:
 def get_outbox_stats(
     db: Annotated[Session, Depends(get_db)],
     owner_user: Annotated[User, Depends(require_owner)],
+    _: Annotated[User, Depends(check_plan_permission(PlanTier.PRO))],
 ):
     service = WhatsAppOutboxService(db)
     stats = service.get_stats(business_id=owner_user.tenant_id)
@@ -108,6 +110,7 @@ def enqueue_message(
     payload: OutboxEnqueueRequest,
     db: Annotated[Session, Depends(get_db)],
     owner_user: Annotated[User, Depends(require_owner)],
+    _: Annotated[User, Depends(check_plan_permission(PlanTier.PRO))],
 ):
     service = WhatsAppOutboxService(db)
     entity = service.queue_message(

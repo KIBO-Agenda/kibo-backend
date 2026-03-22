@@ -3,6 +3,7 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.models.tenant import PlanTier
 from app.repositories.tenant import TenantRepository
 
 
@@ -39,6 +40,7 @@ class TenantService:
         phone: str | None,
         slot_duration: int = 15,
         max_users: int = 5,
+        plan_tier: PlanTier = PlanTier.STARTER,
         timezone_identifier: str = "America/Bogota",
         business_hours: dict | None = None,
         message_templates: dict | None = None,
@@ -49,6 +51,7 @@ class TenantService:
             phone=phone,
             slot_duration=slot_duration,
             max_users=max_users,
+            plan_tier=plan_tier,
             timezone_identifier=timezone_identifier,
             business_hours=self._normalize_business_hours(business_hours),
             message_templates=self._normalize_message_templates(message_templates),
@@ -76,6 +79,7 @@ class TenantService:
         phone: str | None = None,
         slot_duration: int | None = None,
         max_users: int | None = None,
+        plan_tier: PlanTier | None = None,
         timezone_identifier: str | None = None,
         business_hours: dict | None = None,
         message_templates: dict | None = None,
@@ -87,6 +91,7 @@ class TenantService:
             phone=phone,
             slot_duration=slot_duration,
             max_users=max_users,
+            plan_tier=plan_tier,
             timezone_identifier=timezone_identifier,
             business_hours=self._normalize_business_hours(business_hours),
             message_templates=self._normalize_message_templates(message_templates),

@@ -4,6 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 
 from app.models.auth.user import UserRole
+from app.models.tenant import PlanTier
 
 
 class UserLoginRequest(BaseModel):
@@ -15,6 +16,7 @@ class TokenPairResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    plan_tier: PlanTier | None = None
 
 
 class UserAuthResponse(BaseModel):
@@ -55,6 +57,7 @@ class MessageResponse(BaseModel):
 class CurrentSessionTenant(BaseModel):
     name: str
     slot_duration: int
+    plan_tier: PlanTier
 
 
 class CurrentSessionResponse(BaseModel):
@@ -62,6 +65,7 @@ class CurrentSessionResponse(BaseModel):
     name: str
     role: UserRole
     tenant_id: uuid.UUID
+    plan_tier: PlanTier
     tenant: CurrentSessionTenant
 
 

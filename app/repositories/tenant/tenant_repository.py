@@ -4,7 +4,13 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.models.tenant.tenant import Tenant, default_business_hours, default_message_templates
+from app.models.tenant.tenant import (
+    PlanTier,
+    Tenant,
+    default_business_hours,
+    default_message_templates,
+    max_users_for_plan,
+)
 
 
 class TenantRepository:
@@ -40,6 +46,7 @@ class TenantRepository:
         phone: str | None,
         slot_duration: int = 15,
         max_users: int = 5,
+        plan_tier: PlanTier = PlanTier.STARTER,
         timezone_identifier: str = "America/Bogota",
         trial_days: int = 30,
         business_hours: dict | None = None,
@@ -51,8 +58,9 @@ class TenantRepository:
         tenant = Tenant(
             name=name,
             phone=phone,
+            plan_tier=plan_tier,
             slot_duration=slot_duration,
-            max_users=max_users,
+            max_users=max_users_for_plan(plan_tier),
             timezone_identifier=timezone_identifier,
             business_hours=self._normalize_business_hours(business_hours) or default_business_hours(),
             message_templates=self._normalize_message_templates(message_templates) or default_message_templates(),
@@ -86,6 +94,7 @@ class TenantRepository:
         phone: str | None = None,
         slot_duration: int | None = None,
         max_users: int | None = None,
+        plan_tier: PlanTier | None = None,
         timezone_identifier: str | None = None,
         business_hours: dict | None = None,
         message_templates: dict | None = None,
@@ -101,8 +110,11 @@ class TenantRepository:
             tenant.phone = phone
         if slot_duration is not None:
             tenant.slot_duration = slot_duration
+        if plan_tier is not None:
+            tenant.plan_tier = plan_tier
         if max_users is not None:
             tenant.max_users = max_users
+        tenant.max_users = max_users_for_plan(tenant.plan_tier)
         if timezone_identifier is not None:
             tenant.timezone_identifier = timezone_identifier
         if business_hours is not None:

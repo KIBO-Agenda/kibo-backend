@@ -4,14 +4,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.models.tenant import SubscriptionStatus
+from app.models.tenant import PlanTier, SubscriptionStatus
 
 
 class TenantCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     phone: str | None = Field(None, max_length=20)
+    plan_tier: PlanTier = PlanTier.STARTER
     slot_duration: int = Field(default=15, ge=5, le=120)
-    max_users: int = Field(default=5, ge=1, le=500)
+    max_users: int = Field(default=2, ge=1, le=99)
     timezone_identifier: str = Field(default="America/Bogota", min_length=3, max_length=64)
 
 
@@ -124,8 +125,9 @@ class TenantCreateWithHours(TenantCreate, TenantBusinessHoursMixin):
 class TenantUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     phone: str | None = Field(None, max_length=20)
+    plan_tier: PlanTier | None = None
     slot_duration: int | None = Field(None, ge=5, le=120)
-    max_users: int | None = Field(None, ge=1, le=500)
+    max_users: int | None = Field(None, ge=1, le=99)
     timezone_identifier: str | None = Field(None, min_length=3, max_length=64)
     business_hours: BusinessHours | None = None
     message_templates: MessageTemplates | None = None
@@ -162,6 +164,7 @@ class TenantResponse(BaseModel):
     id: uuid.UUID
     name: str
     phone: str | None
+    plan_tier: PlanTier
     timezone_identifier: str
     subscription_status: SubscriptionStatus
     subscription_valid_until: datetime

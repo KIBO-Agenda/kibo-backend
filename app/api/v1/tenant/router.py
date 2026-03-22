@@ -1,14 +1,21 @@
 from typing import Annotated
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import require_owner
+from app.core.dependencies import check_plan_permission, has_min_plan_tier, require_owner
 from app.db.session import get_db
 from app.core.dependencies import get_super_admin_id_from_token
 from app.models.auth import User
-from app.schemas.tenant import TenantCreate, TenantResponse, TenantSettingsUpdate, TenantUpdate
+from app.models.tenant import PlanTier
+from app.schemas.tenant import (
+    MessageTemplates,
+    TenantCreate,
+    TenantResponse,
+    TenantSettingsUpdate,
+    TenantUpdate,
+)
 from app.services.tenant import TenantService
 
 router = APIRouter(prefix="/tenants", tags=["tenants"])
@@ -25,6 +32,7 @@ def create_tenant(
     tenant = service.create_tenant(
         name=payload.name,
         phone=payload.phone,
+        plan_tier=payload.plan_tier,
         slot_duration=payload.slot_duration,
         max_users=payload.max_users,
         timezone_identifier=payload.timezone_identifier,
@@ -39,6 +47,13 @@ def update_tenant_settings(
     owner_user: Annotated[User, Depends(require_owner)],
 ):
     service = TenantService(db)
+    tenant = service.get_owner_settings(owner_user.tenant_id)
+    if payload.message_templates is not None and not has_min_plan_tier(tenant.plan_tier, PlanTier.PRO):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="This feature is available in the pro plan. Please upgrade to continue.",
+        )
+
     tenant = service.update_owner_settings(
         owner_user.tenant_id,
         name=payload.name,
@@ -59,6 +74,38 @@ def get_tenant_settings(
     service = TenantService(db)
     tenant = service.get_owner_settings(owner_user.tenant_id)
     return TenantResponse.model_validate(tenant)
+
+
+@router.get(
+    "/settings/message-templates",
+    response_model=MessageTemplates,
+)
+def get_message_templates(
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+    __: Annotated[User, Depends(check_plan_permission(PlanTier.PRO))],
+):
+    service = TenantService(db)
+    tenant = service.get_owner_settings(owner_user.tenant_id)
+    return MessageTemplates.model_validate(getattr(tenant, "message_templates", {}))
+
+
+@router.patch(
+    "/settings/message-templates",
+    response_model=MessageTemplates,
+)
+def update_message_templates(
+    payload: MessageTemplates,
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+    __: Annotated[User, Depends(check_plan_permission(PlanTier.PRO))],
+):
+    service = TenantService(db)
+    tenant = service.update_owner_settings(
+        owner_user.tenant_id,
+        message_templates=payload,
+    )
+    return MessageTemplates.model_validate(getattr(tenant, "message_templates", {}))
 
 
 @router.get("/{tenant_id}")
@@ -97,6 +144,7 @@ def update_tenant(
         tenant_id,
         name=payload.name,
         phone=payload.phone,
+        plan_tier=payload.plan_tier,
         slot_duration=payload.slot_duration,
         max_users=payload.max_users,
         timezone_identifier=payload.timezone_identifier,

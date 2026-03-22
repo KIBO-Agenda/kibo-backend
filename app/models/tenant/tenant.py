@@ -16,6 +16,23 @@ class SubscriptionStatus(str, Enum):
     SUSPENDED = "suspended"
 
 
+class PlanTier(str, Enum):
+    STARTER = "starter"
+    PRO = "pro"
+    BUSINESS = "business"
+
+
+PLAN_MAX_USERS: dict[PlanTier, int] = {
+    PlanTier.STARTER: 2,
+    PlanTier.PRO: 6,
+    PlanTier.BUSINESS: 99,
+}
+
+
+def max_users_for_plan(plan_tier: PlanTier) -> int:
+    return PLAN_MAX_USERS[plan_tier]
+
+
 def default_business_hours() -> dict[str, dict[str, str | bool]]:
     return {
         "monday": {"is_open": True, "open": "08:00", "close": "18:00"},
@@ -65,6 +82,17 @@ class Tenant(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    plan_tier: Mapped[PlanTier] = mapped_column(
+        SAEnum(
+            PlanTier,
+            name="plan_tier",
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+            create_type=False,
+        ),
+        nullable=False,
+        default=PlanTier.STARTER,
+        server_default=PlanTier.STARTER.value,
+    )
     timezone_identifier: Mapped[str] = mapped_column(
         String(64), nullable=False, server_default="America/Bogota"
     )
@@ -90,7 +118,10 @@ class Tenant(Base):
     slot_duration: Mapped[int] = mapped_column(
         nullable=False, default=15
     )
-    max_users: Mapped[int] = mapped_column(nullable=False, default=5)
+    max_users: Mapped[int] = mapped_column(
+        nullable=False,
+        default=max_users_for_plan(PlanTier.STARTER),
+    )
     business_hours: Mapped[dict[str, dict[str, str | bool]]] = mapped_column(
         JSONB,
         nullable=False,

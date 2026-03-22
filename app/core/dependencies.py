@@ -8,7 +8,19 @@ from sqlalchemy.orm import Session
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.auth import User, UserRole
+from app.models.tenant import PlanTier
 from app.repositories.tenant import PaymentRepository, TenantRepository
+
+
+PLAN_RANK: dict[PlanTier, int] = {
+    PlanTier.STARTER: 1,
+    PlanTier.PRO: 2,
+    PlanTier.BUSINESS: 3,
+}
+
+
+def has_min_plan_tier(current_tier: PlanTier, required_tier: PlanTier) -> bool:
+    return PLAN_RANK[current_tier] >= PLAN_RANK[required_tier]
 
 
 def _ensure_tenant_trial_or_payment(db: Session, tenant_id: uuid.UUID) -> None:
@@ -174,3 +186,42 @@ def require_owner(
             detail="Owner role required",
         )
     return current_user
+
+
+def check_plan_permission(required_tier: PlanTier):
+    def _dependency(
+        current_user: Annotated[User, Depends(get_current_tenant_user)],
+        db: Annotated[Session, Depends(get_db)],
+    ) -> User:
+        tenant_repo = TenantRepository(db)
+        tenant = tenant_repo.get_by_id(current_user.tenant_id)
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found",
+            )
+
+        if has_min_plan_tier(tenant.plan_tier, required_tier):
+            return current_user
+
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"This feature is available in the {required_tier.value} plan. "
+                "Please upgrade to continue."
+            ),
+        )
+
+    return _dependency
+
+
+def ensure_multi_location_permission(plan_tier: PlanTier, requested_locations: int) -> None:
+    if requested_locations <= 1:
+        return
+    if has_min_plan_tier(plan_tier, PlanTier.BUSINESS):
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        detail="This feature is available in the business plan. Please upgrade to continue.",
+    )

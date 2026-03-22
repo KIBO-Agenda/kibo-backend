@@ -121,13 +121,15 @@ class AuthService:
             "name": current_user.name,
             "role": current_user.role,
             "tenant_id": current_user.tenant_id,
+            "plan_tier": tenant.plan_tier,
             "tenant": {
                 "name": tenant.name,
                 "slot_duration": tenant.slot_duration,
+                "plan_tier": tenant.plan_tier,
             },
         }
 
-    def login_user(self, *, email: str, password: str) -> tuple[User, str, str]:
+    def login_user(self, *, email: str, password: str) -> tuple[User, str, str, str]:
         user = self.auth_repository.get_user_by_email(email=email)
         if not user or not verify_password(password, user.password_hash):
             raise HTTPException(
@@ -140,13 +142,21 @@ class AuthService:
                 detail="User is inactive",
             )
 
+        tenant = self.tenant_repository.get_by_id(user.tenant_id)
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found",
+            )
+
         payload = {
             "sub": str(user.id),
             "tenant_id": str(user.tenant_id),
             "role": user.role.value,
+            "plan_tier": tenant.plan_tier.value,
             "scope": "tenant_user",
         }
-        return user, create_access_token(payload), create_refresh_token(payload)
+        return user, create_access_token(payload), create_refresh_token(payload), tenant.plan_tier.value
 
     def login_super_admin(self, *, email: str, password: str) -> tuple[SuperAdmin, str, str]:
         normalized_email = email.strip().lower()
