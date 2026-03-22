@@ -4,10 +4,12 @@ from datetime import date, datetime, time
 from sqlalchemy import and_, case, func, select, update
 from sqlalchemy.orm import Session
 
+from app.core.timezone import now_for_timezone
 from app.models.appointments import Appointment, AppointmentStatus
 from app.models.auth import User
 from app.models.clients import Client
 from app.models.services import Service
+from app.models.tenant import Tenant
 
 
 class AppointmentRepository:
@@ -366,7 +368,10 @@ class AppointmentRepository:
         
         Returns the number of appointments updated.
         """
-        now = datetime.now()
+        tenant_timezone = self.db.execute(
+            select(Tenant.timezone_identifier).where(Tenant.id == tenant_id)
+        ).scalar_one_or_none()
+        now = now_for_timezone(tenant_timezone)
         today = now.date()
         current_time = now.time()
         

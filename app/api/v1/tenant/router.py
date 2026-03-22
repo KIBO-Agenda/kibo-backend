@@ -27,6 +27,7 @@ def create_tenant(
         phone=payload.phone,
         slot_duration=payload.slot_duration,
         max_users=payload.max_users,
+        timezone_identifier=payload.timezone_identifier,
     )
     return TenantResponse.model_validate(tenant)
 
@@ -43,7 +44,9 @@ def update_tenant_settings(
         name=payload.name,
         phone=payload.phone,
         slot_duration=payload.slot_duration,
+        timezone_identifier=payload.timezone_identifier,
         business_hours=payload.business_hours,
+        message_templates=payload.message_templates,
     )
     return TenantResponse.model_validate(tenant)
 
@@ -96,6 +99,8 @@ def update_tenant(
         phone=payload.phone,
         slot_duration=payload.slot_duration,
         max_users=payload.max_users,
+        timezone_identifier=payload.timezone_identifier,
         business_hours=payload.business_hours,
+        message_templates=payload.message_templates,
     )
     return TenantResponse.model_validate(tenant)

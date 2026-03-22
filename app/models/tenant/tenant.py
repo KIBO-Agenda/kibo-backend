@@ -28,6 +28,35 @@ def default_business_hours() -> dict[str, dict[str, str | bool]]:
     }
 
 
+def default_message_templates() -> dict[str, dict[str, bool | list[str]]]:
+    return {
+        "reminder_24h": {
+            "enabled": True,
+            "variants": [
+                "Hola {nombre}, recordatorio de tu cita manana en {negocio} a las {hora}.",
+            ],
+        },
+        "reminder_2h": {
+            "enabled": True,
+            "variants": [
+                "Hola {nombre}, te esperamos hoy en {negocio} a las {hora}.",
+            ],
+        },
+        "welcome_message": {
+            "enabled": True,
+            "variants": [
+                "Hola {nombre}, gracias por agendar en {negocio}.",
+            ],
+        },
+        "waitlist_notification": {
+            "enabled": True,
+            "variants": [
+                "Hola {nombre}, se libero un cupo a las {hora_disponible}. Responde SI para continuar.",
+            ],
+        },
+    }
+
+
 class Tenant(Base):
     __tablename__ = "tenants"
 
@@ -36,6 +65,9 @@ class Tenant(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    timezone_identifier: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default="America/Bogota"
+    )
     whatsapp_instance_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
@@ -63,6 +95,11 @@ class Tenant(Base):
         JSONB,
         nullable=False,
         default=default_business_hours,
+    )
+    message_templates: Mapped[dict[str, dict[str, bool | list[str]]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=default_message_templates,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

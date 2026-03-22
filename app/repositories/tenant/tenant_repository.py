@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.models.tenant.tenant import Tenant, default_business_hours
+from app.models.tenant.tenant import Tenant, default_business_hours, default_message_templates
 
 
 class TenantRepository:
@@ -25,6 +25,14 @@ class TenantRepository:
                 normalized[day] = value
         return normalized
 
+    @staticmethod
+    def _normalize_message_templates(message_templates: dict | None) -> dict | None:
+        if message_templates is None:
+            return None
+        if hasattr(message_templates, "model_dump"):
+            return message_templates.model_dump()
+        return message_templates
+
     def create(
         self,
         *,
@@ -32,8 +40,10 @@ class TenantRepository:
         phone: str | None,
         slot_duration: int = 15,
         max_users: int = 5,
+        timezone_identifier: str = "America/Bogota",
         trial_days: int = 30,
         business_hours: dict | None = None,
+        message_templates: dict | None = None,
     ) -> Tenant:
         """Create new tenant with initial subscription and trial period."""
         now = datetime.now(timezone.utc)
@@ -43,7 +53,9 @@ class TenantRepository:
             phone=phone,
             slot_duration=slot_duration,
             max_users=max_users,
+            timezone_identifier=timezone_identifier,
             business_hours=self._normalize_business_hours(business_hours) or default_business_hours(),
+            message_templates=self._normalize_message_templates(message_templates) or default_message_templates(),
             subscription_valid_until=trial_ends_at,
             trial_ends_at=trial_ends_at,
         )
@@ -70,7 +82,9 @@ class TenantRepository:
         phone: str | None = None,
         slot_duration: int | None = None,
         max_users: int | None = None,
+        timezone_identifier: str | None = None,
         business_hours: dict | None = None,
+        message_templates: dict | None = None,
     ) -> Tenant | None:
         """Update tenant fields selectively."""
         tenant = self.get_by_id(tenant_id)
@@ -85,8 +99,12 @@ class TenantRepository:
             tenant.slot_duration = slot_duration
         if max_users is not None:
             tenant.max_users = max_users
+        if timezone_identifier is not None:
+            tenant.timezone_identifier = timezone_identifier
         if business_hours is not None:
             tenant.business_hours = self._normalize_business_hours(business_hours)
+        if message_templates is not None:
+            tenant.message_templates = self._normalize_message_templates(message_templates)
 
         self.db.commit()
         self.db.refresh(tenant)

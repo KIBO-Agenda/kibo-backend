@@ -30,6 +30,13 @@ class Settings:
         "DATABASE_URL",
         "postgresql+psycopg://postgres:root@localhost:5432/agenda",
     )
+    DEFAULT_TIMEZONE: str = getenv("DEFAULT_TIMEZONE", "America/Bogota")
+    WHATSAPP_WORKER_ENABLED: bool = getenv("WHATSAPP_WORKER_ENABLED", "false").lower() == "true"
+    WHATSAPP_WORKER_POLL_SECONDS: int = int(getenv("WHATSAPP_WORKER_POLL_SECONDS", "10"))
+    WHATSAPP_WORKER_JITTER_MIN_SECONDS: int = int(getenv("WHATSAPP_WORKER_JITTER_MIN_SECONDS", "5"))
+    WHATSAPP_WORKER_JITTER_MAX_SECONDS: int = int(getenv("WHATSAPP_WORKER_JITTER_MAX_SECONDS", "15"))
+    EVOLUTION_API_BASE_URL: str | None = getenv("EVOLUTION_API_BASE_URL")
+    EVOLUTION_API_KEY: str | None = getenv("EVOLUTION_API_KEY")
     DEBUG: bool = getenv("DEBUG", "false").lower() == "true"
     JWT_SECRET_KEY: str = getenv("JWT_SECRET_KEY", "change-this-secret")
     JWT_ALGORITHM: str = getenv("JWT_ALGORITHM", "HS256")
