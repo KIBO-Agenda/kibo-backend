@@ -69,6 +69,10 @@ class TenantRepository:
         stmt = select(Tenant).where(Tenant.id == tenant_id)
         return self.db.execute(stmt).scalar_one_or_none()
 
+    def get_by_whatsapp_instance_id(self, instance_name: str) -> Tenant | None:
+        stmt = select(Tenant).where(Tenant.whatsapp_instance_id == instance_name)
+        return self.db.execute(stmt).scalar_one_or_none()
+
     def list_all(self) -> list[Tenant]:
         """List all tenants (admin/super_admin only)."""
         stmt = select(Tenant).order_by(Tenant.created_at.desc())

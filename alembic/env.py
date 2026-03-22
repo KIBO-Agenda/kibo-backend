@@ -15,6 +15,7 @@ from app.models.services import Service
 from app.models.appointments import Appointment
 from app.models.conversation_contexts import ConversationContext
 from app.models.whatsapp_sessions import WhatsAppSession
+from app.models.whatsapp_outbox import WhatsAppOutbox
 
 _ = (
     User,
@@ -26,6 +27,7 @@ _ = (
     Appointment,
     ConversationContext,
     WhatsAppSession,
+    WhatsAppOutbox,
 )
 
 # this is the Alembic Config object, which provides
