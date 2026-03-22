@@ -12,6 +12,7 @@ class Client(Base):
     __tablename__ = "clients"
     __table_args__ = (
         Index("idx_clients_tenant", "tenant_id"),
+        Index("idx_clients_phone", "phone"),
         UniqueConstraint("tenant_id", "phone", name="idx_clients_tenant_phone_unique"),
     )
 

@@ -13,8 +13,20 @@ from app.models.tenant import Tenant, TenantPayment
 from app.models.clients import Client
 from app.models.services import Service
 from app.models.appointments import Appointment
+from app.models.conversation_contexts import ConversationContext
+from app.models.whatsapp_sessions import WhatsAppSession
 
-_ = (User, SuperAdmin, Tenant, TenantPayment, Client, Service, Appointment)
+_ = (
+    User,
+    SuperAdmin,
+    Tenant,
+    TenantPayment,
+    Client,
+    Service,
+    Appointment,
+    ConversationContext,
+    WhatsAppSession,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

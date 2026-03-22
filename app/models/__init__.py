@@ -5,6 +5,8 @@ from app.models.clients import Client
 from app.models.services import Service
 from app.models.appointments import Appointment, AppointmentStatus
 from app.models.waitlists import Waitlist
+from app.models.conversation_contexts import ConversationContext
+from app.models.whatsapp_sessions import WhatsAppSession
 
 __all__ = [
     "User",
@@ -18,4 +20,6 @@ __all__ = [
     "Appointment",
     "AppointmentStatus",
     "Waitlist",
+    "ConversationContext",
+    "WhatsAppSession",
 ]

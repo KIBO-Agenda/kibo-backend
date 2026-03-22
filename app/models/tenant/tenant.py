@@ -36,6 +36,9 @@ class Tenant(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    whatsapp_instance_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
     subscription_status: Mapped[SubscriptionStatus] = mapped_column(
         SAEnum(
             SubscriptionStatus,
