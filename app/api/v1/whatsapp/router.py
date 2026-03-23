@@ -11,9 +11,13 @@ from app.models.tenant import PlanTier
 from app.schemas.whatsapp import (
     OutboxEnqueueRequest,
     OutboxStatsResponse,
+    WhatsAppInstanceResponse,
+    WhatsAppLogoutResponse,
+    WhatsAppQrResponse,
+    WhatsAppStatusResponse,
     WebhookProcessResponse,
 )
-from app.services.whatsapp import WhatsAppOutboxService
+from app.services.whatsapp import WhatsAppConnectionService, WhatsAppOutboxService
 
 router = APIRouter(tags=["whatsapp"])
 
@@ -103,6 +107,46 @@ def get_outbox_stats(
     service = WhatsAppOutboxService(db)
     stats = service.get_stats(business_id=owner_user.tenant_id)
     return OutboxStatsResponse(**stats)
+
+
+@router.post("/whatsapp/create-instance", response_model=WhatsAppInstanceResponse)
+async def create_whatsapp_instance(
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+):
+    service = WhatsAppConnectionService(db)
+    result = await service.create_instance(tenant_id=owner_user.tenant_id)
+    return WhatsAppInstanceResponse(**result)
+
+
+@router.get("/whatsapp/get-qr", response_model=WhatsAppQrResponse)
+async def get_whatsapp_qr(
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+):
+    service = WhatsAppConnectionService(db)
+    result = await service.get_qr(tenant_id=owner_user.tenant_id)
+    return WhatsAppQrResponse(**result)
+
+
+@router.get("/whatsapp/status", response_model=WhatsAppStatusResponse)
+async def get_whatsapp_status(
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+):
+    service = WhatsAppConnectionService(db)
+    result = await service.get_status(tenant_id=owner_user.tenant_id)
+    return WhatsAppStatusResponse(**result)
+
+
+@router.delete("/whatsapp/logout", response_model=WhatsAppLogoutResponse)
+async def logout_whatsapp_instance(
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+):
+    service = WhatsAppConnectionService(db)
+    result = await service.logout(tenant_id=owner_user.tenant_id)
+    return WhatsAppLogoutResponse(**result)
 
 
 @router.post("/messaging/outbox/enqueue", response_model=dict)

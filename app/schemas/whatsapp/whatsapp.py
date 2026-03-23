@@ -20,3 +20,26 @@ class WebhookProcessResponse(BaseModel):
     matched_keyword: bool = False
     opt_out_applied: bool = False
     reason: str | None = None
+
+
+class WhatsAppInstanceResponse(BaseModel):
+    instance_name: str
+    status: str
+
+
+class WhatsAppQrResponse(BaseModel):
+    instance_name: str
+    qr_base64: str
+
+
+class WhatsAppStatusResponse(BaseModel):
+    instance_name: str | None
+    status: str
+    connected: bool
+    phone: str | None = None
+
+
+class WhatsAppLogoutResponse(BaseModel):
+    ok: bool
+    instance_name: str | None
+    status: str

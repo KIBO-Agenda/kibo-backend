@@ -81,6 +81,19 @@ class TenantRepository:
         stmt = select(Tenant).where(Tenant.whatsapp_instance_id == instance_name)
         return self.db.execute(stmt).scalar_one_or_none()
 
+    def set_whatsapp_instance_id(
+        self,
+        tenant_id: uuid.UUID,
+        instance_name: str | None,
+    ) -> Tenant | None:
+        tenant = self.get_by_id(tenant_id)
+        if not tenant:
+            return None
+        tenant.whatsapp_instance_id = instance_name
+        self.db.commit()
+        self.db.refresh(tenant)
+        return tenant
+
     def list_all(self) -> list[Tenant]:
         """List all tenants (admin/super_admin only)."""
         stmt = select(Tenant).order_by(Tenant.created_at.desc())

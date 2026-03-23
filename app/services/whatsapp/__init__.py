@@ -4,6 +4,7 @@ from app.services.whatsapp.template_engine import (
     select_variant,
 )
 from app.services.whatsapp.evolution_client import EvolutionClient, EvolutionClientError
+from app.services.whatsapp.connection_service import WhatsAppConnectionService
 from app.services.whatsapp.outbox_service import WhatsAppOutboxService
 
 __all__ = [
@@ -12,5 +13,6 @@ __all__ = [
     "select_variant",
     "EvolutionClient",
     "EvolutionClientError",
+    "WhatsAppConnectionService",
     "WhatsAppOutboxService",
 ]
