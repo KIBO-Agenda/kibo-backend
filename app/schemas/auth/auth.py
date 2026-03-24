@@ -82,4 +82,5 @@ class RegisterResponse(BaseModel):
     email: EmailStr
     full_name: str
     business_name: str
+    plan_tier: PlanTier
     trial_ends_at: datetime

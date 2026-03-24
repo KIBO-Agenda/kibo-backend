@@ -10,6 +10,7 @@ from app.core.dependencies import get_super_admin_id_from_token
 from app.models.auth import User
 from app.models.tenant import PlanTier
 from app.schemas.tenant import (
+    AssignPlanRequest,
     MessageTemplates,
     TenantCreate,
     TenantResponse,
@@ -63,6 +64,18 @@ def update_tenant_settings(
         business_hours=payload.business_hours,
         message_templates=payload.message_templates,
     )
+    return TenantResponse.model_validate(tenant)
+
+
+@router.patch("/assign-plan", response_model=TenantResponse)
+def assign_plan(
+    payload: AssignPlanRequest,
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+):
+    """Assign plan tier to tenant (owner only, typically after registration)."""
+    service = TenantService(db)
+    tenant = service.assign_plan(owner_user.tenant_id, plan_tier=payload.plan_tier)
     return TenantResponse.model_validate(tenant)
 
 

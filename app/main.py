@@ -16,6 +16,7 @@ from app.api.v1.waitlists.router import router as waitlists_router
 from app.api.v1.whatsapp.router import router as whatsapp_router
 from app.core.config import get_settings
 from app.services.whatsapp.worker import run_outbox_worker
+from app.services.scheduler.worker import run_scheduler_lifecycle
 
 settings = get_settings()
 
@@ -24,16 +25,25 @@ settings = get_settings()
 async def lifespan(_: FastAPI):
     worker_stop_event: asyncio.Event | None = None
     worker_task: asyncio.Task | None = None
+    scheduler_stop_event: asyncio.Event | None = None
+    scheduler_task: asyncio.Task | None = None
 
     if settings.WHATSAPP_WORKER_ENABLED:
         worker_stop_event = asyncio.Event()
         worker_task = asyncio.create_task(run_outbox_worker(worker_stop_event))
+
+    scheduler_stop_event = asyncio.Event()
+    scheduler_task = asyncio.create_task(run_scheduler_lifecycle(scheduler_stop_event))
 
     yield
 
     if worker_task and worker_stop_event:
         worker_stop_event.set()
         await worker_task
+
+    if scheduler_task and scheduler_stop_event:
+        scheduler_stop_event.set()
+        await scheduler_task
 
 
 app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)

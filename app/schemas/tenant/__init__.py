@@ -1,4 +1,5 @@
 from app.schemas.tenant.tenant import (
+    AssignPlanRequest,
     MessageTemplates,
     TenantCreate,
     TenantResponse,
@@ -8,6 +9,7 @@ from app.schemas.tenant.tenant import (
 from app.schemas.tenant.tenant_payment import PaymentCreate, PaymentResponse
 
 __all__ = [
+    "AssignPlanRequest",
     "MessageTemplates",
     "TenantCreate",
     "TenantUpdate",

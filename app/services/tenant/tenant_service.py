@@ -3,7 +3,7 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.models.tenant import PlanTier
+from app.models.tenant import PlanTier, max_users_for_plan
 from app.repositories.tenant import TenantRepository
 
 
@@ -132,6 +132,21 @@ class TenantService:
 
     def get_owner_settings(self, tenant_id: uuid.UUID):
         tenant = self.tenant_repo.get_by_id(tenant_id)
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found",
+            )
+        return tenant
+
+    def assign_plan(self, tenant_id: uuid.UUID, *, plan_tier: PlanTier):
+        """Assign a plan to tenant and update max_users limit."""
+        max_users = max_users_for_plan(plan_tier)
+        tenant = self.tenant_repo.update(
+            tenant_id,
+            plan_tier=plan_tier,
+            max_users=max_users,
+        )
         if not tenant:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

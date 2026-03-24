@@ -18,7 +18,7 @@ from app.core.security import (
 from app.models.auth import User
 from app.models.auth import UserRole
 from app.models.super_admin import SuperAdmin
-from app.models.tenant import SubscriptionStatus, Tenant
+from app.models.tenant import PlanTier, SubscriptionStatus, Tenant, max_users_for_plan
 from app.repositories.auth import AuthRepository
 from app.repositories.super_admin import SuperAdminRepository
 from app.repositories.tenant import TenantRepository
@@ -54,6 +54,8 @@ class AuthService:
             subscription_status=SubscriptionStatus.ACTIVE,
             subscription_valid_until=trial_ends_at,
             trial_ends_at=trial_ends_at,
+            plan_tier=PlanTier.PRO,
+            max_users=max_users_for_plan(PlanTier.PRO),
         )
 
         user: User | None = None
@@ -105,6 +107,7 @@ class AuthService:
             "email": user.email,
             "full_name": user.name,
             "business_name": tenant.name,
+            "plan_tier": tenant.plan_tier,
             "trial_ends_at": tenant.trial_ends_at,
         }
 

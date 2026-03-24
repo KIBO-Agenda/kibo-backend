@@ -23,20 +23,23 @@ def has_min_plan_tier(current_tier: PlanTier, required_tier: PlanTier) -> bool:
     return PLAN_RANK[current_tier] >= PLAN_RANK[required_tier]
 
 
-def _ensure_tenant_trial_or_payment(db: Session, tenant_id: uuid.UUID) -> None:
+def _ensure_tenant_trial_or_payment(db: Session, tenant_id: uuid.UUID) -> bool:
+    """Check if tenant is within trial or has an active payment.
+    
+    Returns:
+        True if tenant can access (trial active or payment exists)
+        False if tenant trial expired and no payment exists
+    """
     tenant_repo = TenantRepository(db)
     payment_repo = PaymentRepository(db)
 
     tenant = tenant_repo.get_by_id(tenant_id)
     if not tenant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant not found",
-        )
+        return False
 
     trial_ends_at = getattr(tenant, "trial_ends_at", None)
     if not trial_ends_at:
-        return
+        return True
 
     now = datetime.now(timezone.utc)
     trial_reference = (
@@ -45,15 +48,12 @@ def _ensure_tenant_trial_or_payment(db: Session, tenant_id: uuid.UUID) -> None:
         else trial_ends_at.replace(tzinfo=timezone.utc)
     )
     if now < trial_reference:
-        return
+        return True
 
     if payment_repo.has_any_by_tenant(tenant_id):
-        return
+        return True
 
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Tu periodo de prueba ha terminado. Contacta a soporte o realiza un pago",
-    )
+    return False
 
 
 def get_tenant_id_from_token(
@@ -164,7 +164,12 @@ def get_current_tenant_user(
             detail="User not found or inactive",
         )
 
-    _ensure_tenant_trial_or_payment(db, tenant_id)
+    # Check trial/payment status and require plan selection if trial expired
+    if not _ensure_tenant_trial_or_payment(db, tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="TRIAL_EXPIRED_PLAN_REQUIRED",
+        )
     return user
 
 
@@ -172,7 +177,7 @@ def check_tenant_active(
     current_user: Annotated[User, Depends(get_current_tenant_user)],
     db: Session = Depends(get_db),
 ) -> User:
-    _ensure_tenant_trial_or_payment(db, current_user.tenant_id)
+    # Trial check is already done in get_current_tenant_user dependency
     return current_user
 
 
