@@ -27,11 +27,19 @@ async def start_scheduler() -> AsyncIOScheduler:
 
     _scheduler = AsyncIOScheduler()
     _scheduler.add_job(
-        reminder_scheduler.process_reminders,
+        reminder_scheduler.process_24h_reminders,
         trigger="interval",
         minutes=5,
-        id="reminder_job",
-        name="Process appointment reminders",
+        id="reminder_job_24h",
+        name="Process 24h appointment reminders",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        reminder_scheduler.process_2h_reminders,
+        trigger="interval",
+        minutes=5,
+        id="reminder_job_2h",
+        name="Process 2h appointment reminders",
         replace_existing=True,
     )
 

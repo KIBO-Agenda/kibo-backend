@@ -45,18 +45,18 @@ def default_business_hours() -> dict[str, dict[str, str | bool]]:
     }
 
 
-def default_message_templates() -> dict[str, dict[str, bool | list[str]]]:
+def default_message_templates() -> dict[str, object]:
     return {
         "reminder_24h": {
             "enabled": True,
             "variants": [
-                "Hola {nombre}, recordatorio de tu cita manana en {negocio} a las {hora}.",
+                "Hola {nombre}, soy Kibo, el asistente de {negocio}. Te recuerdo tu cita para {servicio} manana a las {hora}. Responde: 1 para Confirmar, 2 para Cancelar o 3 para Reagendar.",
             ],
         },
         "reminder_2h": {
             "enabled": True,
             "variants": [
-                "Hola {nombre}, te esperamos hoy en {negocio} a las {hora}.",
+                "Hola {nombre}, soy Kibo. Tu cita para {servicio} es hoy a las {hora}. Responde 1 para Confirmar, 2 para Cancelar o 3 para Reagendar.",
             ],
         },
         "welcome_message": {
@@ -71,6 +71,7 @@ def default_message_templates() -> dict[str, dict[str, bool | list[str]]]:
                 "Hola {nombre}, se libero un cupo a las {hora_disponible}. Responde SI para continuar.",
             ],
         },
+        "waitlist_manual_approval": True,
     }
 
 
@@ -127,7 +128,7 @@ class Tenant(Base):
         nullable=False,
         default=default_business_hours,
     )
-    message_templates: Mapped[dict[str, dict[str, bool | list[str]]]] = mapped_column(
+    message_templates: Mapped[dict[str, object]] = mapped_column(
         JSONB,
         nullable=False,
         default=default_message_templates,

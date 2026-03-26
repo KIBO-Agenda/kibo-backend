@@ -14,6 +14,7 @@ class AppointmentStatus(str, Enum):
     CONFIRMED = "confirmed"
     ATTENDED = "attended"
     CANCELLED = "cancelled"
+    RESCHEDULE_REQ = "reschedule_req"
 
 
 class Appointment(Base):
@@ -64,6 +65,9 @@ class Appointment(Base):
     )
     reminder_2h_sent: Mapped[bool] = mapped_column(
         Boolean(), nullable=False, server_default=text("false")
+    )
+    last_notification_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'none'")
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

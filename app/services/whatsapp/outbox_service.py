@@ -156,6 +156,17 @@ class WhatsAppOutboxService:
     def get_stats(self, *, business_id: uuid.UUID) -> dict[str, int]:
         return self.outbox_repo.count_by_status(business_id=business_id)
 
+    def list_recent_messages(self, *, business_id: uuid.UUID, limit: int = 50):
+        safe_limit = max(1, min(limit, 200))
+        return self.outbox_repo.list_recent(business_id=business_id, limit=safe_limit)
+
+    def retry_message(self, *, business_id: uuid.UUID, message_id: uuid.UUID):
+        return self.outbox_repo.reset_for_retry(
+            business_id=business_id,
+            message_id=message_id,
+            now=now_bogota(),
+        )
+
     def apply_opt_out(self, *, business_id: uuid.UUID, phone: str) -> bool:
         client = self.client_repo.get_by_phone_normalized(business_id, phone)
         if not client:

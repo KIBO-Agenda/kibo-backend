@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import and_, case, func, select, update
 from sqlalchemy.orm import Session
@@ -125,6 +125,7 @@ class AppointmentRepository:
         time_start: time | None = None,
         time_end: time | None = None,
         status: AppointmentStatus | None = None,
+        last_notification_type: str | None = None,
         notes: str | None = None,
     ) -> Appointment | None:
         entity = self.get_by_id(tenant_id, appointment_id)
@@ -145,6 +146,8 @@ class AppointmentRepository:
             entity.time_end = time_end
         if status is not None:
             entity.status = status
+        if last_notification_type is not None:
+            entity.last_notification_type = last_notification_type
         if notes is not None:
             entity.notes = notes
 
@@ -404,3 +407,166 @@ class AppointmentRepository:
         
         total_updated = result_past_days.rowcount + result_today.rowcount
         return total_updated
+
+    def get_nearest_pending_by_client_phone(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        phone: str,
+        now: datetime,
+    ) -> Appointment | None:
+        """Return nearest pending appointment for a sender phone.
+
+        Handles phone variants with/without country code and supports a fallback to
+        recent pending appointments when the original slot time has just passed.
+        """
+        sender_digits = "".join(ch for ch in phone if ch.isdigit())
+        if not sender_digits:
+            return None
+
+        def _is_same_phone(client_phone: str | None) -> bool:
+            client_digits = "".join(ch for ch in (client_phone or "") if ch.isdigit())
+            if not client_digits:
+                return False
+            return (
+                sender_digits == client_digits
+                or sender_digits.endswith(client_digits)
+                or client_digits.endswith(sender_digits)
+            )
+
+        base_stmt = (
+            select(Appointment, Client.phone.label("client_phone"))
+            .join(
+                Client,
+                and_(
+                    Client.id == Appointment.client_id,
+                    Client.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.PENDING,
+            )
+        )
+
+        upcoming_rows = self.db.execute(
+            base_stmt
+            .where(
+                (Appointment.appointment_date > now.date())
+                | (
+                    (Appointment.appointment_date == now.date())
+                    & (Appointment.time_start >= now.time())
+                )
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+            .limit(100)
+        ).all()
+
+        for appointment, client_phone in upcoming_rows:
+            if _is_same_phone(client_phone):
+                return appointment
+
+        recent_rows = self.db.execute(
+            base_stmt
+            .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
+            .limit(100)
+        ).all()
+
+        for appointment, client_phone in recent_rows:
+            if _is_same_phone(client_phone):
+                return appointment
+
+        return None
+
+    def has_pending_in_next_hours_by_client_phone(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        phone: str,
+        now: datetime,
+        hours: int,
+    ) -> bool:
+        sender_digits = "".join(ch for ch in phone if ch.isdigit())
+        if not sender_digits:
+            return False
+
+        now_naive = now.replace(tzinfo=None)
+        end_window = now_naive + timedelta(hours=hours)
+
+        rows = self.db.execute(
+            select(Appointment, Client.phone.label("client_phone"))
+            .join(
+                Client,
+                and_(
+                    Client.id == Appointment.client_id,
+                    Client.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.PENDING,
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+            .limit(200)
+        ).all()
+
+        for appointment, client_phone in rows:
+            client_digits = "".join(ch for ch in (client_phone or "") if ch.isdigit())
+            if not client_digits:
+                continue
+            same_phone = (
+                sender_digits == client_digits
+                or sender_digits.endswith(client_digits)
+                or client_digits.endswith(sender_digits)
+            )
+            if not same_phone:
+                continue
+
+            appt_dt = datetime.combine(appointment.appointment_date, appointment.time_start)
+            if now_naive <= appt_dt <= end_window:
+                return True
+
+        return False
+
+    def get_by_id_with_relations(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        appointment_id: uuid.UUID,
+    ):
+        stmt = (
+            select(
+                Appointment,
+                Client.name.label("client_name"),
+                Client.phone.label("client_phone"),
+                Service.name.label("service_name"),
+                User.name.label("staff_name"),
+            )
+            .join(
+                Client,
+                and_(
+                    Client.id == Appointment.client_id,
+                    Client.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .join(
+                Service,
+                and_(
+                    Service.id == Appointment.service_id,
+                    Service.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .join(
+                User,
+                and_(
+                    User.id == Appointment.user_id,
+                    User.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.id == appointment_id,
+            )
+            .limit(1)
+        )
+        return self.db.execute(stmt).first()

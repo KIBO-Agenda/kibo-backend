@@ -128,3 +128,55 @@ class WhatsAppOutboxRepository:
             if status in counters:
                 counters[status] += 1
         return counters
+
+    def list_recent(self, *, business_id: uuid.UUID, limit: int = 50) -> list[WhatsAppOutbox]:
+        stmt = (
+            select(WhatsAppOutbox)
+            .where(WhatsAppOutbox.business_id == business_id)
+            .order_by(WhatsAppOutbox.created_at.desc())
+            .limit(limit)
+        )
+        return list(self.db.execute(stmt).scalars().all())
+
+    def has_recent_message(
+        self,
+        *,
+        business_id: uuid.UUID,
+        phone: str,
+        message_type: str,
+        since: datetime,
+    ) -> bool:
+        digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+        if not digits:
+            return False
+
+        rows = self.db.execute(
+            select(WhatsAppOutbox.phone)
+            .where(
+                WhatsAppOutbox.business_id == business_id,
+                WhatsAppOutbox.message_type == message_type,
+                WhatsAppOutbox.created_at >= since,
+            )
+            .order_by(WhatsAppOutbox.created_at.desc())
+            .limit(200)
+        ).scalars().all()
+
+        for candidate in rows:
+            candidate_digits = "".join(ch for ch in (candidate or "") if ch.isdigit())
+            if not candidate_digits:
+                continue
+            if digits == candidate_digits or digits.endswith(candidate_digits) or candidate_digits.endswith(digits):
+                return True
+        return False
+
+    def reset_for_retry(self, *, business_id: uuid.UUID, message_id: uuid.UUID, now: datetime) -> WhatsAppOutbox | None:
+        entity = self.db.get(WhatsAppOutbox, message_id)
+        if not entity or entity.business_id != business_id:
+            return None
+
+        entity.status = "pending"
+        entity.error_message = None
+        entity.next_attempt_at = now
+        self.db.commit()
+        self.db.refresh(entity)
+        return entity

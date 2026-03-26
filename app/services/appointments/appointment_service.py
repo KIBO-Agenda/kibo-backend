@@ -214,9 +214,11 @@ class AppointmentService:
         tenant_timezone = getattr(tenant, "timezone_identifier", None)
         now_local = now_for_timezone(tenant_timezone)
         today_local = today_for_timezone(tenant_timezone)
+        now_local_naive = now_local.replace(tzinfo=None)
 
-        open_dt = datetime.combine(target_date, open_time, tzinfo=now_local.tzinfo)
-        close_dt = datetime.combine(target_date, close_time, tzinfo=now_local.tzinfo)
+        # Use local-naive datetimes in this routine to avoid mixed aware/naive comparisons.
+        open_dt = datetime.combine(target_date, open_time)
+        close_dt = datetime.combine(target_date, close_time)
 
         occupied = self.appointment_repo.list_active_by_user_on_date(
             tenant_id=tenant_id,
@@ -241,7 +243,7 @@ class AppointmentService:
 
             if not has_conflict:
                 # Exclude past slots only if the date is today
-                if filter_past_slots and cursor < now_local:
+                if filter_past_slots and cursor < now_local_naive:
                     cursor += slot_delta
                     continue
                 free_slots.append(cursor.strftime("%H:%M"))

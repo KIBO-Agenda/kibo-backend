@@ -34,6 +34,15 @@ class EvolutionClient:
         headers = {"apikey": api_key, "Content-Type": "application/json"}
         return httpx.AsyncClient(base_url=base_url.rstrip("/"), headers=headers, timeout=20.0)
 
+    def _webhook_payload(self) -> dict[str, Any]:
+        return {
+            "enabled": True,
+            "url": self.settings.EVOLUTION_WEBHOOK_URL,
+            "events": ["MESSAGES_UPSERT"],
+            "byEvents": False,
+            "base64": False,
+        }
+
     @staticmethod
     def _extract_message(response: httpx.Response) -> str:
         try:
@@ -53,6 +62,7 @@ class EvolutionClient:
             "instanceName": instance_name,
             "qrcode": True,
             "integration": "WHATSAPP-BAILEYS",
+            "webhook": self._webhook_payload(),
         }
 
         async with self._get_client() as client:
@@ -72,6 +82,57 @@ class EvolutionClient:
             raise EvolutionClientError(
                 f"Failed to create instance ({response.status_code}): {message}"
             )
+
+    async def find_webhook(self, *, instance_name: str) -> dict[str, Any] | None:
+        async with self._get_client() as client:
+            try:
+                response = await client.get(f"/webhook/find/{instance_name}")
+            except httpx.HTTPError as exc:
+                raise EvolutionClientError(f"Evolution API unavailable: {exc}") from exc
+
+            if response.status_code == 404:
+                return None
+            if response.status_code >= 400:
+                raise EvolutionClientError(
+                    f"Failed to get webhook config ({response.status_code}): {self._extract_message(response)}"
+                )
+
+            body = response.json()
+            if body is None:
+                return None
+            return dict(body) if isinstance(body, Mapping) else None
+
+    async def set_webhook(self, *, instance_name: str) -> dict[str, Any]:
+        payload = {"webhook": self._webhook_payload()}
+        async with self._get_client() as client:
+            try:
+                response = await client.post(f"/webhook/set/{instance_name}", json=payload)
+            except httpx.HTTPError as exc:
+                raise EvolutionClientError(f"Evolution API unavailable: {exc}") from exc
+
+            if response.status_code >= 400:
+                raise EvolutionClientError(
+                    f"Failed to set webhook ({response.status_code}): {self._extract_message(response)}"
+                )
+
+            body = response.json()
+            return dict(body) if isinstance(body, Mapping) else {"raw": body}
+
+    async def ensure_webhook(self, *, instance_name: str) -> None:
+        webhook = await self.find_webhook(instance_name=instance_name)
+        expected_url = self.settings.EVOLUTION_WEBHOOK_URL
+        if webhook and webhook.get("enabled") is True:
+            current_url = webhook.get("url")
+            events = webhook.get("events")
+            if (
+                isinstance(current_url, str)
+                and current_url == expected_url
+                and isinstance(events, list)
+                and "MESSAGES_UPSERT" in events
+            ):
+                return
+
+        await self.set_webhook(instance_name=instance_name)
 
     async def get_qr_code(self, *, instance_name: str) -> dict[str, Any]:
         attempts = [

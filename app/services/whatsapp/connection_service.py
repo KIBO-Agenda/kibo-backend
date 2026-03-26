@@ -106,6 +106,13 @@ class WhatsAppConnectionService:
             last_seen_at=now_bogota(),
         )
 
+        # Keep legacy instances and recreated instances aligned with inbound callback expectations.
+        try:
+            await self.evolution_client.ensure_webhook(instance_name=instance_name)
+        except EvolutionClientError:
+            # Instance creation should still succeed even if webhook sync is temporarily unavailable.
+            pass
+
         return {
             "instance_name": instance_name,
             "status": payload.get("status", "created"),
@@ -165,6 +172,12 @@ class WhatsAppConnectionService:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=str(exc),
             ) from exc
+
+        try:
+            await self.evolution_client.ensure_webhook(instance_name=instance_name)
+        except EvolutionClientError:
+            # Do not fail status polling if webhook reconciliation is unavailable.
+            pass
 
         status_normalized = _normalize_status(_extract_state(payload))
         self.session_repo.upsert_status(

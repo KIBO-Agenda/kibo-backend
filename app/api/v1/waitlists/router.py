@@ -24,6 +24,7 @@ def create_waitlist(
     service = WaitlistService(db)
     entity = service.create_waitlist(
         current_user.tenant_id,
+        service_id=payload.service_id,
         client_name=payload.client_name,
         client_phone=payload.client_phone,
         target_date=payload.target_date,

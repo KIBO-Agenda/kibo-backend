@@ -55,6 +55,13 @@ ALLOWED_TEMPLATE_TOKENS = {
     "hora_disponible",
 }
 TOKEN_REGEX = re.compile(r"\{([^{}]+)\}")
+FORBIDDEN_TEMPLATE_PATTERNS = [
+    re.compile(r"<\s*script", re.IGNORECASE),
+    re.compile(r"javascript\s*:", re.IGNORECASE),
+    re.compile(r"onerror\s*=", re.IGNORECASE),
+    re.compile(r"onload\s*=", re.IGNORECASE),
+    re.compile(r"<\s*iframe", re.IGNORECASE),
+]
 
 
 class MessageTemplateConfig(BaseModel):
@@ -66,6 +73,9 @@ class MessageTemplateConfig(BaseModel):
     def validate_variants(cls, value: list[str]) -> list[str]:
         normalized = [item.strip() for item in value if item and item.strip()]
         for variant in normalized:
+            for pattern in FORBIDDEN_TEMPLATE_PATTERNS:
+                if pattern.search(variant):
+                    raise ValueError("Template contains unsafe content")
             for match in TOKEN_REGEX.findall(variant):
                 if match not in ALLOWED_TEMPLATE_TOKENS:
                     raise ValueError(f"Unsupported token: {{{match}}}")
@@ -83,6 +93,7 @@ class MessageTemplates(BaseModel):
     reminder_2h: MessageTemplateConfig = Field(default_factory=MessageTemplateConfig)
     welcome_message: MessageTemplateConfig = Field(default_factory=MessageTemplateConfig)
     waitlist_notification: MessageTemplateConfig = Field(default_factory=MessageTemplateConfig)
+    waitlist_manual_approval: bool = True
 
 
 def default_business_hours_payload() -> BusinessHours:

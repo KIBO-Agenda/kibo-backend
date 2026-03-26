@@ -1,3 +1,6 @@
+import uuid
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -20,6 +23,32 @@ class WebhookProcessResponse(BaseModel):
     matched_keyword: bool = False
     opt_out_applied: bool = False
     reason: str | None = None
+
+
+class WhatsAppWebhookResponse(BaseModel):
+    accepted: bool = True
+    event: str
+    processed: bool = False
+    flow: str | None = None
+    action: str | None = None
+    reason: str | None = None
+    appointment_id: str | None = None
+    waitlist_triggered: bool | None = None
+    horas_disponibles_hoy: str | None = None
+
+
+class OutboxMessageResponse(BaseModel):
+    id: uuid.UUID
+    phone: str
+    message_type: str
+    rendered_text: str
+    status: str
+    attempts: int
+    error_message: str | None = None
+    created_at: datetime
+    sent_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
 
 
 class WhatsAppInstanceResponse(BaseModel):

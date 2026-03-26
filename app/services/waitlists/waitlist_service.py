@@ -15,6 +15,7 @@ class WaitlistService:
         self,
         tenant_id: uuid.UUID,
         *,
+        service_id: uuid.UUID | None,
         client_name: str,
         client_phone: str | None,
         target_date: date,
@@ -22,6 +23,7 @@ class WaitlistService:
     ):
         return self.waitlist_repo.create(
             tenant_id=tenant_id,
+            service_id=service_id,
             client_name=client_name,
             client_phone=client_phone,
             target_date=target_date,

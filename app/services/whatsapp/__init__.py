@@ -6,6 +6,7 @@ from app.services.whatsapp.template_engine import (
 from app.services.whatsapp.evolution_client import EvolutionClient, EvolutionClientError
 from app.services.whatsapp.connection_service import WhatsAppConnectionService
 from app.services.whatsapp.outbox_service import WhatsAppOutboxService
+from app.services.whatsapp.webhook_service import WhatsAppWebhookService
 
 __all__ = [
     "TemplateEngineError",
@@ -15,4 +16,5 @@ __all__ = [
     "EvolutionClientError",
     "WhatsAppConnectionService",
     "WhatsAppOutboxService",
+    "WhatsAppWebhookService",
 ]

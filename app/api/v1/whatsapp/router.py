@@ -1,5 +1,6 @@
 import re
 from typing import Annotated, Any
+import uuid
 
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy.orm import Session
@@ -11,13 +12,15 @@ from app.models.tenant import PlanTier
 from app.schemas.whatsapp import (
     OutboxEnqueueRequest,
     OutboxStatsResponse,
+    OutboxMessageResponse,
     WhatsAppInstanceResponse,
     WhatsAppLogoutResponse,
     WhatsAppQrResponse,
     WhatsAppStatusResponse,
     WebhookProcessResponse,
+    WhatsAppWebhookResponse,
 )
-from app.services.whatsapp import WhatsAppConnectionService, WhatsAppOutboxService
+from app.services.whatsapp import WhatsAppConnectionService, WhatsAppOutboxService, WhatsAppWebhookService
 
 router = APIRouter(tags=["whatsapp"])
 
@@ -54,25 +57,68 @@ def _extract_phone(payload: dict[str, Any]) -> str | None:
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
 
     candidates = [
+        payload.get("sender"),
+        data.get("sender"),
         payload.get("phone"),
         payload.get("number"),
         payload.get("from"),
+        payload.get("remoteJid"),
+        payload.get("participant"),
         data.get("phone"),
         data.get("number"),
         data.get("from"),
         data.get("remoteJid"),
+        data.get("participant"),
     ]
 
     message_data = data.get("message") if isinstance(data.get("message"), dict) else {}
     key_data = data.get("key") if isinstance(data.get("key"), dict) else {}
-    candidates.extend([message_data.get("from"), key_data.get("remoteJid")])
+    candidates.extend(
+        [
+            message_data.get("from"),
+            key_data.get("remoteJid"),
+            key_data.get("participant"),
+        ]
+    )
+
+    preferred_jid_digits: str | None = None
+    fallback_digits: str | None = None
 
     for candidate in candidates:
         if not isinstance(candidate, str):
             continue
+        lowered = candidate.lower()
+        if "@lid" in lowered:
+            continue
         digits = "".join(ch for ch in candidate if ch.isdigit())
-        if digits:
-            return digits
+        if not digits:
+            continue
+
+        if "@s.whatsapp.net" in lowered or "@c.us" in lowered:
+            preferred_jid_digits = digits
+            break
+
+        if fallback_digits is None:
+            fallback_digits = digits
+
+    if preferred_jid_digits:
+        return preferred_jid_digits
+    if fallback_digits:
+        return fallback_digits
+    return None
+
+
+def _extract_message_id(payload: dict[str, Any]) -> str | None:
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    key_data = data.get("key") if isinstance(data.get("key"), dict) else {}
+    candidates = [
+        payload.get("messageId"),
+        payload.get("message_id"),
+        key_data.get("id"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
     return None
 
 
@@ -96,6 +142,33 @@ def _extract_text(payload: dict[str, Any]) -> str | None:
         if isinstance(candidate, str) and candidate.strip():
             return candidate.strip()
     return None
+
+
+def _extract_event(payload: dict[str, Any]) -> str:
+    event = payload.get("event") or payload.get("type")
+    if isinstance(event, str) and event.strip():
+        return event.strip()
+    return "unknown"
+
+
+def _is_messages_upsert_event(raw_event: str) -> bool:
+    normalized = "".join(ch for ch in (raw_event or "").lower() if ch.isalnum())
+    return normalized == "messagesupsert"
+
+
+def _extract_from_me(payload: dict[str, Any]) -> bool:
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    key_data = data.get("key") if isinstance(data.get("key"), dict) else {}
+
+    candidates = [
+        payload.get("fromMe"),
+        data.get("fromMe"),
+        key_data.get("fromMe"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, bool):
+            return candidate
+    return False
 
 
 @router.get("/messaging/outbox/stats", response_model=OutboxStatsResponse)
@@ -166,11 +239,57 @@ def enqueue_message(
     return {"id": str(entity.id), "status": entity.status}
 
 
+@router.get("/messaging/outbox/messages", response_model=list[OutboxMessageResponse])
+def list_outbox_messages(
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+    _: Annotated[User, Depends(check_plan_permission(PlanTier.PRO))],
+):
+    service = WhatsAppOutboxService(db)
+    messages = service.list_recent_messages(business_id=owner_user.tenant_id, limit=80)
+    return [OutboxMessageResponse.model_validate(item) for item in messages]
+
+
+@router.post("/messaging/outbox/{message_id}/retry", response_model=dict)
+def retry_outbox_message(
+    message_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+    _: Annotated[User, Depends(check_plan_permission(PlanTier.PRO))],
+):
+    service = WhatsAppOutboxService(db)
+    retried = service.retry_message(business_id=owner_user.tenant_id, message_id=message_id)
+    if not retried:
+        return {"ok": False, "message": "Message not found"}
+    return {"ok": True, "id": str(retried.id), "status": retried.status}
+
+
 @router.post("/webhooks/evolution", response_model=WebhookProcessResponse)
-def evolution_webhook(
+async def evolution_webhook(
     db: Annotated[Session, Depends(get_db)],
     payload: dict[str, Any] = Body(default_factory=dict),
 ):
+    event = _extract_event(payload)
+    # Backward-compatible behavior: if Evolution is still pointing to this endpoint,
+    # process inbound interactive replies here as well.
+    if _is_messages_upsert_event(event) and not _extract_from_me(payload):
+        instance_name = _extract_instance_name(payload)
+        phone = _extract_phone(payload)
+        incoming_text = _extract_text(payload)
+        if instance_name and phone and incoming_text:
+            webhook_service = WhatsAppWebhookService(db)
+            await webhook_service.process_incoming_message(
+                instance_name=instance_name,
+                sender_phone=phone,
+                text=incoming_text,
+                message_id=_extract_message_id(payload),
+            )
+            return WebhookProcessResponse(
+                matched_keyword=False,
+                opt_out_applied=False,
+                reason="message_processed",
+            )
+
     service = WhatsAppOutboxService(db)
 
     incoming_text = _extract_text(payload)
@@ -195,3 +314,62 @@ def evolution_webhook(
         return WebhookProcessResponse(matched_keyword=True, opt_out_applied=False, reason="client_not_found")
 
     return WebhookProcessResponse(matched_keyword=True, opt_out_applied=True, reason=None)
+
+
+@router.post("/webhooks/whatsapp", response_model=WhatsAppWebhookResponse)
+async def whatsapp_webhook(
+    db: Annotated[Session, Depends(get_db)],
+    payload: dict[str, Any] = Body(default_factory=dict),
+):
+    event = _extract_event(payload)
+    if not _is_messages_upsert_event(event):
+        return WhatsAppWebhookResponse(
+            event=event,
+            processed=False,
+            reason="event_ignored",
+        )
+
+    if _extract_from_me(payload):
+        return WhatsAppWebhookResponse(
+            event=event,
+            processed=False,
+            reason="outgoing_message_ignored",
+        )
+
+    instance_name = _extract_instance_name(payload)
+    phone = _extract_phone(payload)
+    incoming_text = _extract_text(payload)
+    if not instance_name or not phone or not incoming_text:
+        return WhatsAppWebhookResponse(
+            event=event,
+            processed=False,
+            reason="missing_fields",
+        )
+
+    message_id = _extract_message_id(payload)
+
+    service = WhatsAppWebhookService(db)
+    try:
+        result = await service.process_incoming_message(
+            instance_name=instance_name,
+            sender_phone=phone,
+            text=incoming_text,
+            message_id=message_id,
+        )
+    except Exception:  # noqa: BLE001
+        return WhatsAppWebhookResponse(
+            event=event,
+            processed=False,
+            reason="internal_error",
+        )
+
+    return WhatsAppWebhookResponse(
+        event=event,
+        processed=bool(result.get("processed")),
+        flow=result.get("flow"),
+        action=result.get("action"),
+        reason=result.get("reason"),
+        appointment_id=result.get("appointment_id"),
+        waitlist_triggered=result.get("waitlist_triggered"),
+        horas_disponibles_hoy=result.get("horas_disponibles_hoy"),
+    )

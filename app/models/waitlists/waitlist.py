@@ -19,6 +19,7 @@ class Waitlist(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    service_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     client_name: Mapped[str] = mapped_column(String(255), nullable=False)
     client_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     target_date: Mapped[date] = mapped_column(Date(), nullable=False)

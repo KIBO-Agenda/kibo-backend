@@ -8,8 +8,11 @@ from app.core.timezone import now_for_timezone
 from app.models.appointments import Appointment, AppointmentStatus
 from app.models.tenant import PlanTier, Tenant
 from app.repositories.clients import ClientRepository
+from app.repositories.services import ServiceRepository
 from app.repositories.tenant import TenantRepository
 from app.services.whatsapp.evolution_client import EvolutionClient, EvolutionClientError
+from app.services.whatsapp.template_engine import TemplateEngineError, select_variant
+from app.services.whatsapp.variable_resolver import WhatsAppVariableResolver
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,8 @@ class ReminderScheduler:
     async def _send_24h_reminders(self, db: Session) -> None:
         """Send 24-hour reminder for appointments tomorrow."""
         client_repo = ClientRepository(db)
+        service_repo = ServiceRepository(db)
+        resolver = WhatsAppVariableResolver(db)
 
         # Get all active tenants with plan that supports reminders (PRO or BUSINESS)
         all_tenants = db.query(Tenant).all()
@@ -55,12 +60,13 @@ class ReminderScheduler:
             appointments = db.query(Appointment).filter(
                 Appointment.tenant_id == tenant.id,
                 Appointment.appointment_date == tomorrow,
-                Appointment.status != AppointmentStatus.CANCELLED,
-                Appointment.reminder_24h_sent == False,
+                Appointment.status == AppointmentStatus.PENDING,
+                Appointment.last_notification_type != "reminder_24h",
             ).all()
 
             for appointment in appointments:
                 client = client_repo.get_by_id(tenant.id, appointment.client_id)
+                service = service_repo.get_by_id(tenant.id, appointment.service_id)
                 if not client or not client.phone or client.whatsapp_opt_out:
                     logger.debug(
                         f"Appointment {appointment.id}: client {client.id if client else 'unknown'} "
@@ -74,9 +80,12 @@ class ReminderScheduler:
                         client_phone=client.phone,
                         appointment=appointment,
                         client_name=client.name,
+                        service_name=service.name if service else "tu servicio",
+                        resolver=resolver,
                         reminder_type="24h",
                     )
                     appointment.reminder_24h_sent = True
+                    appointment.last_notification_type = "reminder_24h"
                     db.commit()
                     logger.info(
                         f"24h reminder sent: tenant={tenant.id}, appointment={appointment.id}, phone={client.phone}"
@@ -89,6 +98,8 @@ class ReminderScheduler:
     async def _send_2h_reminders(self, db: Session) -> None:
         """Send 2-hour reminder for appointments starting in next 2 hours."""
         client_repo = ClientRepository(db)
+        service_repo = ServiceRepository(db)
+        resolver = WhatsAppVariableResolver(db)
 
         all_tenants = db.query(Tenant).all()
 
@@ -109,8 +120,8 @@ class ReminderScheduler:
             appointments = db.query(Appointment).filter(
                 Appointment.tenant_id == tenant.id,
                 Appointment.appointment_date == today,
-                Appointment.status != AppointmentStatus.CANCELLED,
-                Appointment.reminder_2h_sent == False,
+                Appointment.status == AppointmentStatus.PENDING,
+                Appointment.last_notification_type != "reminder_2h",
             ).all()
 
             for appointment in appointments:
@@ -126,6 +137,7 @@ class ReminderScheduler:
 
                 if tz_now < appointment_datetime <= cutoff_time:
                     client = client_repo.get_by_id(tenant.id, appointment.client_id)
+                    service = service_repo.get_by_id(tenant.id, appointment.service_id)
                     if not client or not client.phone or client.whatsapp_opt_out:
                         logger.debug(f"Appointment {appointment.id}: client skipped (no phone or opted-out).")
                         continue
@@ -136,9 +148,12 @@ class ReminderScheduler:
                             client_phone=client.phone,
                             appointment=appointment,
                             client_name=client.name,
+                            service_name=service.name if service else "tu servicio",
+                            resolver=resolver,
                             reminder_type="2h",
                         )
                         appointment.reminder_2h_sent = True
+                        appointment.last_notification_type = "reminder_2h"
                         db.commit()
                         logger.info(
                             f"2h reminder sent: tenant={tenant.id}, appointment={appointment.id}, phone={client.phone}"
@@ -147,7 +162,15 @@ class ReminderScheduler:
                         logger.error(f"Failed to send 2h reminder for appointment {appointment.id}: {e}")
 
     async def _send_reminder_message(
-        self, *, tenant, client_phone: str, appointment, client_name: str, reminder_type: str
+        self,
+        *,
+        tenant,
+        client_phone: str,
+        appointment,
+        client_name: str,
+        service_name: str,
+        resolver: WhatsAppVariableResolver,
+        reminder_type: str,
     ) -> None:
         """Send a reminder message via Evolution API."""
         # Format appointment time in tenant's timezone
@@ -158,19 +181,34 @@ class ReminderScheduler:
 
         appointment_time_str = appointment_datetime.strftime("%H:%M")
 
-        # Build message based on template
-        if reminder_type == "24h":
-            message = (
-                f"Hola {client_name}, recordatorio de tu cita manana en {tenant.name} a las {appointment_time_str}. "
-                f"Confirma aqui: https://wa.me/{tenant.whatsapp_instance_id}?text=SI"
+        values = {
+            "nombre": client_name,
+            "negocio": tenant.name,
+            "hora": appointment_time_str,
+            "servicio": service_name,
+            "fecha": appointment.appointment_date.isoformat(),
+        }
+
+        message_type = "reminder_24h" if reminder_type == "24h" else "reminder_2h"
+        try:
+            _, template = select_variant(tenant.message_templates or {}, message_type)
+            message = resolver.resolve(
+                tenant_id=tenant.id,
+                template=template,
+                values=values,
             )
-        elif reminder_type == "2h":
-            message = (
-                f"Hola {client_name}, recordatorio de tu cita hoy en {tenant.name} a las {appointment_time_str}. "
-                f"Te esperamos!"
-            )
-        else:
-            message = f"Recordatorio de cita en {tenant.name} a las {appointment_time_str}"
+        except TemplateEngineError:
+            if reminder_type == "24h":
+                message = (
+                    f"Hola {client_name}, soy Kibo, el asistente de {tenant.name}. "
+                    f"Te recuerdo tu cita para {service_name} manana a las {appointment_time_str}. "
+                    "Responde 1 para Confirmar, 2 para Cancelar o 3 para Reagendar."
+                )
+            else:
+                message = (
+                    f"Hola {client_name}, soy Kibo. Tu cita para {service_name} en {tenant.name} "
+                    f"es hoy a las {appointment_time_str}. Responde 1 para confirmar, 2 para cancelar o 3 para reagendar."
+                )
 
         # Normalize phone to 57+number format if needed
         phone = client_phone
@@ -185,6 +223,20 @@ class ReminderScheduler:
             )
         except EvolutionClientError as e:
             raise e
+
+    async def process_24h_reminders(self) -> None:
+        db = self.db_sessionmaker()
+        try:
+            await self._send_24h_reminders(db)
+        finally:
+            db.close()
+
+    async def process_2h_reminders(self) -> None:
+        db = self.db_sessionmaker()
+        try:
+            await self._send_2h_reminders(db)
+        finally:
+            db.close()
 
     def _plan_supports_reminders(self, plan_tier: PlanTier) -> bool:
         """Check if plan tier includes automatic reminders."""

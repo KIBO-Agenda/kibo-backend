@@ -1,6 +1,8 @@
 from app.schemas.whatsapp.whatsapp import (
     OutboxEnqueueRequest,
+    OutboxMessageResponse,
     OutboxStatsResponse,
+    WhatsAppWebhookResponse,
     WhatsAppInstanceResponse,
     WhatsAppLogoutResponse,
     WhatsAppQrResponse,
@@ -10,7 +12,9 @@ from app.schemas.whatsapp.whatsapp import (
 
 __all__ = [
     "OutboxEnqueueRequest",
+    "OutboxMessageResponse",
     "OutboxStatsResponse",
+    "WhatsAppWebhookResponse",
     "WhatsAppInstanceResponse",
     "WhatsAppQrResponse",
     "WhatsAppStatusResponse",

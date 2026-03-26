@@ -14,7 +14,7 @@ services:
     volumes:
       - ./instances:/evolution/instances:rw
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080"]
       interval: 10s
       timeout: 5s
       retries: 5
