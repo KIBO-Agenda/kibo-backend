@@ -71,6 +71,7 @@ class WhatsAppWebhookService:
         sender_phone: str,
         text: str,
         message_id: str | None,
+        sender_name: str | None = None,
     ) -> dict[str, Any]:
         tenant = self.tenant_repo.get_by_whatsapp_instance_id(instance_name)
         if not tenant:

@@ -144,6 +144,20 @@ def _extract_text(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def _extract_sender_name(payload: dict[str, Any]) -> str | None:
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    candidates = [
+        payload.get("pushName"),
+        payload.get("senderName"),
+        data.get("pushName"),
+        data.get("senderName"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
+
+
 def _extract_event(payload: dict[str, Any]) -> str:
     event = payload.get("event") or payload.get("type")
     if isinstance(event, str) and event.strip():
@@ -283,6 +297,7 @@ async def evolution_webhook(
                 sender_phone=phone,
                 text=incoming_text,
                 message_id=_extract_message_id(payload),
+                sender_name=_extract_sender_name(payload),
             )
             return WebhookProcessResponse(
                 matched_keyword=False,
@@ -347,6 +362,7 @@ async def whatsapp_webhook(
         )
 
     message_id = _extract_message_id(payload)
+    sender_name = _extract_sender_name(payload)
 
     service = WhatsAppWebhookService(db)
     try:
@@ -355,6 +371,7 @@ async def whatsapp_webhook(
             sender_phone=phone,
             text=incoming_text,
             message_id=message_id,
+            sender_name=sender_name,
         )
     except Exception:  # noqa: BLE001
         return WhatsAppWebhookResponse(

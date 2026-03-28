@@ -49,4 +49,7 @@ Thumbs.db
 # Alembic generated cache
 alembic/__pycache__/
 .app/infrastructure/whatsapp/instances
-/instances
+infrastructure/whatsapp/instances
+
+AGENTS.md
+.agents/
