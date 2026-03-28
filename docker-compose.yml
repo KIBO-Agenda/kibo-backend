@@ -1,0 +1,65 @@
+services:
+  db:
+    image: postgres:15
+    container_name: agenda-db
+    environment:
+      POSTGRES_DB: agenda
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  evolution-api:
+    image: atendai/evolution-api:latest
+    container_name: evolution-api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-kibo-dev-key}
+      SESSION_CLIENT: NOWEB
+      DATABASE_PROVIDER: postgresql
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/agenda?schema=public
+      DATABASE_CONNECTION_URI: postgresql://postgres:postgres@db:5432/agenda?schema=public
+      CONFIG_SESSION_PHONE_VERSION: 2.3000.1035692802
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      WEBHOOK_URL: http://backend:8000/api/v1/webhooks/whatsapp
+    ports:
+      - "8080:8080"
+    volumes:
+      - evolution_instances:/evolution/instances:rw
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: .
+    container_name: agenda-backend
+    depends_on:
+      db:
+        condition: service_healthy
+      evolution-api:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/agenda
+      EVOLUTION_API_BASE_URL: http://evolution-api:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-kibo-dev-key}
+      BACKEND_BASE_URL: http://localhost:8000
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:
+  evolution_instances:
