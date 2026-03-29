@@ -16,6 +16,7 @@ class ProcessedWebhook(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     sender_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    remote_jid: Mapped[str | None] = mapped_column(String(255), nullable=True)
     processed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

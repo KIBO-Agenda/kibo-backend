@@ -1,5 +1,7 @@
 import logging
+from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
@@ -215,14 +217,54 @@ class ReminderScheduler:
         if not phone.startswith("57"):
             phone = f"57{phone.lstrip('0+')}"
 
-        try:
-            await self.evolution_client.send_text(
-                instance_name=tenant.whatsapp_instance_id,
-                phone=phone,
-                text=message,
+        response = await self.evolution_client.send_text(
+            instance_name=tenant.whatsapp_instance_id,
+            phone=phone,
+            text=message,
+        )
+
+        remote_id = self._extract_remote_id(response)
+        if remote_id:
+            appointment.whatsapp_remote_id = remote_id
+            logger.info(
+                "Stored remote ID for reminder",
+                extra={
+                    "tenant_id": str(tenant.id),
+                    "appointment_id": str(appointment.id),
+                    "remote_id": remote_id,
+                    "reminder_type": reminder_type,
+                },
             )
-        except EvolutionClientError as e:
-            raise e
+
+    @staticmethod
+    def _extract_remote_id(response: Any) -> str | None:
+        if not isinstance(response, Mapping):
+            return None
+
+        def _from_mapping(payload: Mapping[str, Any]) -> str | None:
+            candidate = payload.get("remoteJid") or payload.get("remote_jid")
+            return candidate if isinstance(candidate, str) else None
+
+        data = response.get("data")
+        if isinstance(data, Mapping):
+            key_data = data.get("key")
+            if isinstance(key_data, Mapping):
+                remote = _from_mapping(key_data)
+                if remote:
+                    return remote
+            remote = _from_mapping(data)
+            if remote:
+                return remote
+
+        remote = _from_mapping(response)
+        if remote:
+            return remote
+
+        message_data = response.get("message")
+        if isinstance(message_data, Mapping):
+            return _from_mapping(message_data)
+
+        return None
 
     async def process_24h_reminders(self) -> None:
         db = self.db_sessionmaker()

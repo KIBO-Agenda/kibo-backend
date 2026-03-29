@@ -12,6 +12,21 @@ from app.models.services import Service
 from app.models.tenant import Tenant
 
 
+def _normalize_digits(value: str | None) -> str:
+    return "".join(ch for ch in (value or "") if ch.isdigit())
+
+
+def _phone_variants(digits: str) -> set[str]:
+    variants = {digits}
+    if digits.startswith("57") and len(digits) > 10:
+        variants.add(digits[2:])
+    if len(digits) > 10:
+        variants.add(digits[-10:])
+    if len(digits) == 10 and digits.startswith("3"):
+        variants.add(f"57{digits}")
+    return {variant for variant in variants if variant}
+
+
 class AppointmentRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -126,6 +141,7 @@ class AppointmentRepository:
         time_end: time | None = None,
         status: AppointmentStatus | None = None,
         last_notification_type: str | None = None,
+        whatsapp_remote_id: str | None = None,
         notes: str | None = None,
     ) -> Appointment | None:
         entity = self.get_by_id(tenant_id, appointment_id)
@@ -148,9 +164,26 @@ class AppointmentRepository:
             entity.status = status
         if last_notification_type is not None:
             entity.last_notification_type = last_notification_type
+        if whatsapp_remote_id is not None:
+            entity.whatsapp_remote_id = whatsapp_remote_id
         if notes is not None:
             entity.notes = notes
 
+        self.db.commit()
+        self.db.refresh(entity)
+        return entity
+
+    def update_whatsapp_remote_id(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        appointment_id: uuid.UUID,
+        whatsapp_remote_id: str,
+    ) -> Appointment | None:
+        entity = self.get_by_id(tenant_id, appointment_id)
+        if not entity:
+            return None
+        entity.whatsapp_remote_id = whatsapp_remote_id
         self.db.commit()
         self.db.refresh(entity)
         return entity
@@ -389,7 +422,7 @@ class AppointmentRepository:
             .values(status=AppointmentStatus.ATTENDED)
         )
         result_past_days = self.db.execute(stmt_past_days)
-        
+
         # Update confirmed appointments from today that have already ended
         stmt_today = (
             update(Appointment)
@@ -404,8 +437,10 @@ class AppointmentRepository:
         result_today = self.db.execute(stmt_today)
         
         self.db.commit()
-        
-        total_updated = result_past_days.rowcount + result_today.rowcount
+
+        past_count = result_past_days.rowcount if hasattr(result_past_days, "rowcount") else 0
+        today_count = result_today.rowcount if hasattr(result_today, "rowcount") else 0
+        total_updated = past_count + today_count
         return total_updated
 
     def get_nearest_pending_by_client_phone(
@@ -420,19 +455,18 @@ class AppointmentRepository:
         Handles phone variants with/without country code and supports a fallback to
         recent pending appointments when the original slot time has just passed.
         """
-        sender_digits = "".join(ch for ch in phone if ch.isdigit())
+        sender_digits = _normalize_digits(phone)
         if not sender_digits:
             return None
 
+        sender_variants = _phone_variants(sender_digits)
+
         def _is_same_phone(client_phone: str | None) -> bool:
-            client_digits = "".join(ch for ch in (client_phone or "") if ch.isdigit())
+            client_digits = _normalize_digits(client_phone)
             if not client_digits:
                 return False
-            return (
-                sender_digits == client_digits
-                or sender_digits.endswith(client_digits)
-                or client_digits.endswith(sender_digits)
-            )
+            client_variants = _phone_variants(client_digits)
+            return bool(sender_variants & client_variants)
 
         base_stmt = (
             select(Appointment, Client.phone.label("client_phone"))
@@ -486,9 +520,11 @@ class AppointmentRepository:
         now: datetime,
         hours: int,
     ) -> bool:
-        sender_digits = "".join(ch for ch in phone if ch.isdigit())
+        sender_digits = _normalize_digits(phone)
         if not sender_digits:
             return False
+
+        sender_variants = _phone_variants(sender_digits)
 
         now_naive = now.replace(tzinfo=None)
         end_window = now_naive + timedelta(hours=hours)
@@ -511,15 +547,11 @@ class AppointmentRepository:
         ).all()
 
         for appointment, client_phone in rows:
-            client_digits = "".join(ch for ch in (client_phone or "") if ch.isdigit())
+            client_digits = _normalize_digits(client_phone)
             if not client_digits:
                 continue
-            same_phone = (
-                sender_digits == client_digits
-                or sender_digits.endswith(client_digits)
-                or client_digits.endswith(sender_digits)
-            )
-            if not same_phone:
+            client_variants = _phone_variants(client_digits)
+            if not (sender_variants & client_variants):
                 continue
 
             appt_dt = datetime.combine(appointment.appointment_date, appointment.time_start)

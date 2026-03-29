@@ -16,6 +16,14 @@ Multi-tenant appointment SaaS backend built with FastAPI, SQLAlchemy, Alembic, a
 - [Scheduler & WhatsApp Workers](#scheduler--whatsapp-workers)
 - [Docs & References](#docs--references)
 
+## Quick Start
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+docker compose exec backend python app/seeds/create_frontend_test_users.py
+```
+
 ## Stack & Features
 - **FastAPI + SQLAlchemy** service layer orchestrating multi-tenant CRUD.
 - **PostgreSQL** persistence with Alembic migrations and exclusion constraints for overlapping appointments.
@@ -144,6 +152,7 @@ python app/seeds/create_frontend_test_users.py
 The script provisions:
 - Super admin `qa.superadmin@example.com / Admin1234!`
 - Tenants “Barberia Centro” and “Salon Norte” with owner/staff accounts for UI testing (see script output for credentials).
+  - Reminder automation is available only on `plan_tier=pro` or `plan_tier=business`. Upgrade tenants via owner settings or a direct DB/repository call before testing WhatsApp flows.
 
 ## Testing
 - Default tests rely on SQLite in-memory DB (see `tests/conftest.py`).
@@ -158,6 +167,7 @@ The script provisions:
 - APScheduler reminder lifecycle (`app/services/scheduler`) runs automatically on app startup, sending 24h and 2h reminders per appointment.
 - WhatsApp outbox worker (`app/services/whatsapp/worker.py`) is toggled by `WHATSAPP_WORKER_ENABLED=true` in env vars; enable it when Evolution API credentials are valid.
 - Both workers use asyncio tasks created in `app/main.py` lifespan hook.
+- Reminder automation only runs for tenants on `plan_tier=pro` or `plan_tier=business`. Starter tenants (seed defaults) must be upgraded via owner settings or `TenantService.assign_plan`/`TenantService.update_tenant` before automatic reminders are queued.
 
 ## Docs & References
 - `docs/01_architecture.md` — architectural principles.
