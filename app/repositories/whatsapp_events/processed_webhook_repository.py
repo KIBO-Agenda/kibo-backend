@@ -44,8 +44,20 @@ class ProcessedWebhookRepository:
                 return True
         return False
 
-    def register(self, *, message_id: str, tenant_id: uuid.UUID, sender_phone: str | None = None) -> bool:
-        entity = ProcessedWebhook(message_id=message_id, tenant_id=tenant_id, sender_phone=sender_phone)
+    def register(
+        self,
+        *,
+        message_id: str,
+        tenant_id: uuid.UUID,
+        sender_phone: str | None = None,
+        remote_jid: str | None = None,
+    ) -> bool:
+        entity = ProcessedWebhook(
+            message_id=message_id,
+            tenant_id=tenant_id,
+            sender_phone=sender_phone,
+            remote_jid=remote_jid,
+        )
         self.db.add(entity)
         try:
             self.db.commit()

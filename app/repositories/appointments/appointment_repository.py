@@ -560,6 +560,42 @@ class AppointmentRepository:
 
         return False
 
+    def get_nearest_pending_by_remote_id(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        remote_id: str,
+        now: datetime,
+    ) -> Appointment | None:
+        stmt = (
+            select(Appointment)
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.PENDING,
+                Appointment.whatsapp_remote_id == remote_id,
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+            .limit(50)
+        )
+        upcoming = self.db.execute(
+            stmt.where(
+                (Appointment.appointment_date > now.date())
+                | (
+                    (Appointment.appointment_date == now.date())
+                    & (Appointment.time_start >= now.time())
+                )
+            )
+        ).scalars().first()
+        if upcoming:
+            return upcoming
+
+        recent = self.db.execute(
+            stmt
+            .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
+            .limit(50)
+        ).scalars().first()
+        return recent
+
     def get_by_id_with_relations(
         self,
         *,

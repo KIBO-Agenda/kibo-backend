@@ -31,6 +31,8 @@ class WhatsAppWebhookResponse(BaseModel):
     processed: bool = False
     flow: str | None = None
     action: str | None = None
+    status: str | None = None
+    matched_by: str | None = None
     reason: str | None = None
     appointment_id: str | None = None
     waitlist_triggered: bool | None = None

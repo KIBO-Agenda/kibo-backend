@@ -54,7 +54,8 @@ def _extract_instance_name(payload: dict[str, Any]) -> str | None:
 
 
 def _extract_phone(payload: dict[str, Any]) -> str | None:
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    data_candidate = payload.get("data")
+    data = data_candidate if isinstance(data_candidate, dict) else {}
 
     candidates = [
         payload.get("sender"),
@@ -71,8 +72,10 @@ def _extract_phone(payload: dict[str, Any]) -> str | None:
         data.get("participant"),
     ]
 
-    message_data = data.get("message") if isinstance(data.get("message"), dict) else {}
-    key_data = data.get("key") if isinstance(data.get("key"), dict) else {}
+    message_candidate = data.get("message")
+    message_data = message_candidate if isinstance(message_candidate, dict) else {}
+    key_candidate = data.get("key")
+    key_data = key_candidate if isinstance(key_candidate, dict) else {}
     candidates.extend(
         [
             message_data.get("from"),
@@ -109,8 +112,10 @@ def _extract_phone(payload: dict[str, Any]) -> str | None:
 
 
 def _extract_message_id(payload: dict[str, Any]) -> str | None:
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-    key_data = data.get("key") if isinstance(data.get("key"), dict) else {}
+    data_candidate = payload.get("data")
+    data = data_candidate if isinstance(data_candidate, dict) else {}
+    key_candidate = data.get("key")
+    key_data = key_candidate if isinstance(key_candidate, dict) else {}
     candidates = [
         payload.get("messageId"),
         payload.get("message_id"),
@@ -122,9 +127,30 @@ def _extract_message_id(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def _extract_remote_jid(payload: dict[str, Any]) -> str | None:
+    data_candidate = payload.get("data")
+    data = data_candidate if isinstance(data_candidate, dict) else {}
+    key_candidate = data.get("key")
+    key_data = key_candidate if isinstance(key_candidate, dict) else {}
+    candidates = [
+        payload.get("remoteJid"),
+        data.get("remoteJid"),
+        key_data.get("remoteJid"),
+        key_data.get("participant"),
+        payload.get("participant"),
+        data.get("participant"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
+
+
 def _extract_text(payload: dict[str, Any]) -> str | None:
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-    message_data = data.get("message") if isinstance(data.get("message"), dict) else {}
+    data_candidate = payload.get("data")
+    data = data_candidate if isinstance(data_candidate, dict) else {}
+    message_candidate = data.get("message")
+    message_data = message_candidate if isinstance(message_candidate, dict) else {}
 
     candidates = [
         payload.get("text"),
@@ -145,7 +171,8 @@ def _extract_text(payload: dict[str, Any]) -> str | None:
 
 
 def _extract_sender_name(payload: dict[str, Any]) -> str | None:
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    data_candidate = payload.get("data")
+    data = data_candidate if isinstance(data_candidate, dict) else {}
     candidates = [
         payload.get("pushName"),
         payload.get("senderName"),
@@ -171,8 +198,10 @@ def _is_messages_upsert_event(raw_event: str) -> bool:
 
 
 def _extract_from_me(payload: dict[str, Any]) -> bool:
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-    key_data = data.get("key") if isinstance(data.get("key"), dict) else {}
+    data_candidate = payload.get("data")
+    data = data_candidate if isinstance(data_candidate, dict) else {}
+    key_candidate = data.get("key")
+    key_data = key_candidate if isinstance(key_candidate, dict) else {}
 
     candidates = [
         payload.get("fromMe"),
@@ -182,6 +211,40 @@ def _extract_from_me(payload: dict[str, Any]) -> bool:
     for candidate in candidates:
         if isinstance(candidate, bool):
             return candidate
+    return False
+
+
+def _extract_message_type(payload: dict[str, Any]) -> str | None:
+    """Extract message type from payload to detect conversation, extendedTextMessage, audioMessage, etc."""
+    data_candidate = payload.get("data")
+    data = data_candidate if isinstance(data_candidate, dict) else {}
+    message_candidate = data.get("message")
+    message_data = message_candidate if isinstance(message_candidate, dict) else {}
+
+    # Check for different message types in the message object
+    if "conversation" in message_data:
+        return "conversation"
+    elif "extendedTextMessage" in message_data:
+        return "extendedTextMessage"
+    elif "audioMessage" in message_data:
+        return "audioMessage"
+    elif "imageMessage" in message_data:
+        return "imageMessage"
+    elif "videoMessage" in message_data:
+        return "videoMessage"
+    elif "documentMessage" in message_data:
+        return "documentMessage"
+    elif "stickerMessage" in message_data:
+        return "stickerMessage"
+    
+    return None
+
+
+def _is_group_message(payload: dict[str, Any]) -> bool:
+    """Check if the message is from a WhatsApp group by looking for @g.us in remoteJid"""
+    remote_jid = _extract_remote_jid(payload)
+    if remote_jid and "@g.us" in remote_jid.lower():
+        return True
     return False
 
 
@@ -344,17 +407,38 @@ async def whatsapp_webhook(
             reason="event_ignored",
         )
 
+    # Filter 1: Ignore group messages
+    if _is_group_message(payload):
+        return WhatsAppWebhookResponse(
+            event=event,
+            processed=False,
+            reason="group_message",
+        )
+
+    # Filter 2: Ignore messages sent by me
     if _extract_from_me(payload):
         return WhatsAppWebhookResponse(
             event=event,
             processed=False,
-            reason="outgoing_message_ignored",
+            reason="sent_by_me",
+        )
+
+    # Filter 3: Only allow conversation and extendedTextMessage types
+    message_type = _extract_message_type(payload)
+    allowed_types = {"conversation", "extendedTextMessage"}
+    if message_type not in allowed_types:
+        return WhatsAppWebhookResponse(
+            event=event,
+            processed=False,
+            reason="unsupported_message_type",
         )
 
     instance_name = _extract_instance_name(payload)
     phone = _extract_phone(payload)
     incoming_text = _extract_text(payload)
-    if not instance_name or not phone or not incoming_text:
+    remote_jid = _extract_remote_jid(payload)
+
+    if not instance_name or not incoming_text or (not phone and not remote_jid):
         return WhatsAppWebhookResponse(
             event=event,
             processed=False,
@@ -368,10 +452,11 @@ async def whatsapp_webhook(
     try:
         result = await service.process_incoming_message(
             instance_name=instance_name,
-            sender_phone=phone,
+            sender_phone=phone or remote_jid or "",
             text=incoming_text,
             message_id=message_id,
             sender_name=sender_name,
+            remote_jid=remote_jid,
         )
     except Exception:  # noqa: BLE001
         return WhatsAppWebhookResponse(
@@ -385,6 +470,8 @@ async def whatsapp_webhook(
         processed=bool(result.get("processed")),
         flow=result.get("flow"),
         action=result.get("action"),
+        status=result.get("status"),
+        matched_by=result.get("matched_by"),
         reason=result.get("reason"),
         appointment_id=result.get("appointment_id"),
         waitlist_triggered=result.get("waitlist_triggered"),

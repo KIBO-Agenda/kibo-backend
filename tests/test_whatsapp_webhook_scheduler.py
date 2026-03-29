@@ -119,6 +119,58 @@ def test_webhook_uses_sender_when_remotejid_is_lid(test_client, db: Session, mon
     assert len(sent_messages) == 1
 
 
+def test_webhook_matches_by_remote_jid_when_phone_missing(test_client, db: Session, monkeypatch):
+    async def _fake_send_text(self, *, instance_name: str, phone: str, text: str):
+        return {"data": {"key": {"remoteJid": "remote-confirm-1"}}}
+
+    monkeypatch.setattr(EvolutionClient, "send_text", _fake_send_text)
+
+    tenant = _create_tenant(db, instance_name="instance-remote-match")
+    client = _create_client(db, tenant.id, name="Valeria", phone="3158892300")
+    service = _create_service(db, tenant.id)
+    appointment = _create_appointment(
+        db,
+        tenant_id=tenant.id,
+        client_id=client.id,
+        service_id=service.id,
+        appointment_date=(datetime.now().date() + timedelta(days=1)),
+        time_start=time(11, 30),
+        status=AppointmentStatus.PENDING,
+    )
+
+    remote_jid = "918273645564738@lid"
+    appointment.whatsapp_remote_id = remote_jid
+    db.commit()
+
+    payload = {
+        "event": "messages.upsert",
+        "instance": tenant.whatsapp_instance_id,
+        "remoteJid": remote_jid,
+        "data": {
+            "key": {
+                "remoteJid": remote_jid,
+                "participant": remote_jid,
+                "fromMe": False,
+                "id": "MSG-REMOTE-1",
+            },
+            "message": {"conversation": "1"},
+        },
+    }
+
+    response = test_client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] is True
+    assert body["status"] == "success"
+    assert body["action"] == "appointment_confirmed"
+    assert body["matched_by"] == "remote_id"
+    assert body["appointment_id"] == str(appointment.id)
+
+    db.refresh(appointment)
+    assert appointment.status == AppointmentStatus.CONFIRMED
+    assert appointment.whatsapp_remote_id == remote_jid
+
+
 def test_webhook_is_idempotent_by_message_id(test_client, db: Session, monkeypatch):
     async def _fake_send_text(self, *, instance_name: str, phone: str, text: str):
         return {"key": "msg-2"}
@@ -246,3 +298,183 @@ def test_scheduler_updates_last_notification_type_for_24h_and_2h(db: Session, mo
     assert appt_2h.last_notification_type == "reminder_2h"
     assert appt_2h.reminder_2h_sent is True
     assert len(calls) >= 2
+
+
+def test_webhook_ignores_group_messages(test_client):
+    """Test that webhook ignores messages from WhatsApp groups (remoteJid contains @g.us)"""
+    payload = {
+        "event": "messages.upsert",
+        "instance": "test-instance",
+        "data": {
+            "key": {
+                "remoteJid": "120363123456789@g.us",  # Group message
+                "fromMe": False,
+                "id": "MSG-GROUP-123",
+            },
+            "message": {"conversation": "1"},
+        },
+    }
+
+    response = test_client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] is False
+    assert body["reason"] == "group_message"
+    assert body["event"] == "messages.upsert"
+
+
+def test_webhook_ignores_own_messages(test_client):
+    """Test that webhook ignores messages sent by me (fromMe=true)"""
+    payload = {
+        "event": "messages.upsert",
+        "instance": "test-instance",
+        "data": {
+            "key": {
+                "remoteJid": "573001234567@s.whatsapp.net",
+                "fromMe": True,  # Message sent by me
+                "id": "MSG-OUTGOING-123",
+            },
+            "message": {"conversation": "1"},
+        },
+    }
+
+    response = test_client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] is False
+    assert body["reason"] == "sent_by_me"
+    assert body["event"] == "messages.upsert"
+
+
+def test_webhook_ignores_audio_messages(test_client):
+    """Test that webhook ignores audio messages"""
+    payload = {
+        "event": "messages.upsert",
+        "instance": "test-instance",
+        "data": {
+            "key": {
+                "remoteJid": "573001234567@s.whatsapp.net",
+                "fromMe": False,
+                "id": "MSG-AUDIO-123",
+            },
+            "message": {
+                "audioMessage": {
+                    "url": "https://example.com/audio.mp3",
+                    "mimetype": "audio/mp4",
+                }
+            },
+        },
+    }
+
+    response = test_client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] is False
+    assert body["reason"] == "unsupported_message_type"
+    assert body["event"] == "messages.upsert"
+
+
+def test_webhook_ignores_image_messages(test_client):
+    """Test that webhook ignores image messages"""
+    payload = {
+        "event": "messages.upsert",
+        "instance": "test-instance",
+        "data": {
+            "key": {
+                "remoteJid": "573001234567@s.whatsapp.net",
+                "fromMe": False,
+                "id": "MSG-IMAGE-123",
+            },
+            "message": {
+                "imageMessage": {
+                    "url": "https://example.com/image.jpg",
+                    "mimetype": "image/jpeg",
+                }
+            },
+        },
+    }
+
+    response = test_client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] is False
+    assert body["reason"] == "unsupported_message_type"
+    assert body["event"] == "messages.upsert"
+
+
+def test_webhook_ignores_video_messages(test_client):
+    """Test that webhook ignores video messages"""
+    payload = {
+        "event": "messages.upsert",
+        "instance": "test-instance",
+        "data": {
+            "key": {
+                "remoteJid": "573001234567@s.whatsapp.net",
+                "fromMe": False,
+                "id": "MSG-VIDEO-123",
+            },
+            "message": {
+                "videoMessage": {
+                    "url": "https://example.com/video.mp4",
+                    "mimetype": "video/mp4",
+                }
+            },
+        },
+    }
+
+    response = test_client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] is False
+    assert body["reason"] == "unsupported_message_type"
+    assert body["event"] == "messages.upsert"
+
+
+def test_webhook_processes_conversation_messages(test_client):
+    """Test that webhook processes conversation messages (should pass filters)"""
+    payload = {
+        "event": "messages.upsert",
+        "instance": "test-instance",
+        "data": {
+            "key": {
+                "remoteJid": "573001234567@s.whatsapp.net",
+                "fromMe": False,
+                "id": "MSG-CONVERSATION-123",
+            },
+            "message": {"conversation": "1"},  # Valid conversation message
+        },
+    }
+
+    response = test_client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    # Should pass filters but may fail at business logic level (tenant not found, etc)
+    # The important thing is it doesn't get filtered out by the new filters
+    assert body["reason"] not in ["group_message", "sent_by_me", "unsupported_message_type"]
+
+
+def test_webhook_processes_extended_text_messages(test_client):
+    """Test that webhook processes extendedTextMessage (should pass filters)"""
+    payload = {
+        "event": "messages.upsert",
+        "instance": "test-instance",
+        "data": {
+            "key": {
+                "remoteJid": "573001234567@s.whatsapp.net",
+                "fromMe": False,
+                "id": "MSG-EXTENDED-123",
+            },
+            "message": {
+                "extendedTextMessage": {
+                    "text": "1",
+                    "contextInfo": {}
+                }
+            },
+        },
+    }
+
+    response = test_client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    # Should pass filters but may fail at business logic level
+    assert body["reason"] not in ["group_message", "sent_by_me", "unsupported_message_type"]
