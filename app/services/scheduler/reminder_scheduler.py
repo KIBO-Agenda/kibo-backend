@@ -78,6 +78,7 @@ class ReminderScheduler:
 
                 try:
                     await self._send_reminder_message(
+                        db=db,
                         tenant=tenant,
                         client_phone=client.phone,
                         appointment=appointment,
@@ -146,6 +147,7 @@ class ReminderScheduler:
 
                     try:
                         await self._send_reminder_message(
+                            db=db,
                             tenant=tenant,
                             client_phone=client.phone,
                             appointment=appointment,
@@ -166,6 +168,7 @@ class ReminderScheduler:
     async def _send_reminder_message(
         self,
         *,
+        db: Session,
         tenant,
         client_phone: str,
         appointment,
@@ -223,11 +226,15 @@ class ReminderScheduler:
             text=message,
         )
 
+        # Extract and store remote_id from Evolution API response
         remote_id = self._extract_remote_id(response)
+        logger.info(f"[DEBUG] Evolution API response structure: {response}")
+        logger.info(f"[DEBUG] Extracted remote_id: {remote_id}")
+        
         if remote_id:
             appointment.whatsapp_remote_id = remote_id
             logger.info(
-                "Stored remote ID for reminder",
+                f"[OUTBOUND] JID {remote_id} vinculado a Cita {appointment.id}",
                 extra={
                     "tenant_id": str(tenant.id),
                     "appointment_id": str(appointment.id),
@@ -235,34 +242,40 @@ class ReminderScheduler:
                     "reminder_type": reminder_type,
                 },
             )
+        else:
+            logger.warning(
+                f"No se pudo extraer remote_id de la respuesta para cita {appointment.id}",
+                extra={
+                    "tenant_id": str(tenant.id),
+                    "appointment_id": str(appointment.id),
+                    "response": response,
+                }
+            )
 
     @staticmethod
     def _extract_remote_id(response: Any) -> str | None:
-        if not isinstance(response, Mapping):
+        """
+        Extract remoteJid from Evolution API response.
+        Expected format: {"key": {"remoteJid": "573008862735@s.whatsapp.net", ...}, ...}
+        """
+        if not isinstance(response, dict):
             return None
 
-        def _from_mapping(payload: Mapping[str, Any]) -> str | None:
-            candidate = payload.get("remoteJid") or payload.get("remote_jid")
-            return candidate if isinstance(candidate, str) else None
+        # Direct path: response.key.remoteJid (Evolution API v2.x format)
+        key_data = response.get("key")
+        if isinstance(key_data, dict):
+            remote_jid = key_data.get("remoteJid")
+            if isinstance(remote_jid, str):
+                return remote_jid
 
+        # Fallback paths for other formats
         data = response.get("data")
-        if isinstance(data, Mapping):
+        if isinstance(data, dict):
             key_data = data.get("key")
-            if isinstance(key_data, Mapping):
-                remote = _from_mapping(key_data)
-                if remote:
-                    return remote
-            remote = _from_mapping(data)
-            if remote:
-                return remote
-
-        remote = _from_mapping(response)
-        if remote:
-            return remote
-
-        message_data = response.get("message")
-        if isinstance(message_data, Mapping):
-            return _from_mapping(message_data)
+            if isinstance(key_data, dict):
+                remote_jid = key_data.get("remoteJid")
+                if isinstance(remote_jid, str):
+                    return remote_jid
 
         return None
 

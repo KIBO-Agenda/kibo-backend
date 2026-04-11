@@ -14,6 +14,7 @@ from app.api.v1.services.router import router as services_router
 from app.api.v1.appointments.router import router as appointments_router
 from app.api.v1.waitlists.router import router as waitlists_router
 from app.api.v1.whatsapp.router import router as whatsapp_router
+from app.api.v1.test import router as test_router
 from app.core.config import get_settings
 from app.services.whatsapp.worker import run_outbox_worker
 from app.services.scheduler.worker import run_scheduler_lifecycle
@@ -66,6 +67,7 @@ app.include_router(services_router, prefix=settings.API_V1_PREFIX)
 app.include_router(appointments_router, prefix=settings.API_V1_PREFIX)
 app.include_router(waitlists_router, prefix=settings.API_V1_PREFIX)
 app.include_router(whatsapp_router, prefix=settings.API_V1_PREFIX)
+app.include_router(test_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/health", tags=["health"])

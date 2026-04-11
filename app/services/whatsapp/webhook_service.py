@@ -90,25 +90,44 @@ class WhatsAppWebhookService:
         if not normalized_text:
             return {"processed": False, "reason": "payload_incomplete"}
 
+        # Priority matching logic: first try remote_id, then fallback to phone
         match_source = "phone_number"
         appointment = None
+        
         if remote_jid:
-            logger.info("Buscando cita para RemoteID: %s", remote_jid)
+            logger.info(f"[WH_MATCH] Buscando cita por RemoteID: {remote_jid} para tenant {tenant.id}")
             now_local = now_for_timezone(tenant.timezone_identifier)
             appointment = self.appointment_repo.get_nearest_pending_by_remote_id(
                 tenant_id=tenant.id,
                 remote_id=remote_jid,
                 now=now_local,
             )
-            if appointment and appointment.client_id:
-                client = self.client_repo.get_by_id(tenant.id, appointment.client_id)
-                if client and client.phone:
-                    normalized_phone = _normalize_digits(client.phone)
-                    match_source = "remote_id"
+            
+            if appointment:
+                # Verify the appointment has a valid client
+                if appointment.client_id:
+                    client = self.client_repo.get_by_id(tenant.id, appointment.client_id)
+                    if client and client.phone:
+                        normalized_phone = _normalize_digits(client.phone)
+                        match_source = "remote_id"
+                        logger.info(
+                            f"[WH_MATCH] Cita encontrada por RemoteID: appointment_id={appointment.id}, "
+                            f"client_phone={client.phone}"
+                        )
+                    else:
+                        logger.warning(
+                            f"[WH_MATCH] RemoteID encontrado pero cliente sin teléfono válido: "
+                            f"appointment_id={appointment.id}, client_id={appointment.client_id}"
+                        )
+                        appointment = None
                 else:
-                    logger.info("RemoteID con appointment sin cliente, fallback a phone matching")
+                    logger.warning(
+                        f"[WH_MATCH] RemoteID encontrado pero cita sin cliente: "
+                        f"appointment_id={appointment.id}"
+                    )
+                    appointment = None
             else:
-                logger.info("RemoteID no encontrado, fallback a phone matching")
+                logger.info(f"[WH_MATCH] No se encontró cita para RemoteID: {remote_jid}")
 
         action = "none"
         if normalized_text in _CONFIRM:
@@ -211,6 +230,7 @@ class WhatsAppWebhookService:
                 )
             return {"processed": True, "status": "success", "action": "welcome_sent"}
 
+        # Handle unrecognized commands
         if message_id:
             self.processed_webhook_repo.register(
                 message_id=message_id,
@@ -219,7 +239,12 @@ class WhatsAppWebhookService:
                 remote_jid=remote_jid,
             )
 
-        return {"processed": False, "reason": "command_not_supported"}
+        # For commands 1, 2, 3 without appointments, provide helpful response
+        if normalized_text in (_CONFIRM.union(_CANCEL).union(_RESCHEDULE)):
+            return {"processed": False, "reason": "no_pending_appointments"}
+
+        # For other messages, simply ignore without error
+        return {"processed": False, "reason": "event_ignored"}
 
     @staticmethod
     def _is_owner_phone(owner_phone: str | None, incoming_phone: str) -> bool:
@@ -257,10 +282,13 @@ class WhatsAppWebhookService:
             whatsapp_remote_id=remote_jid or appointment.whatsapp_remote_id,
         )
 
+        # Send personalized confirmation message
+        confirmation_message = f"¡Confirmado! Gracias por elegir {tenant.name}. Nos vemos pronto."
+
         await self._safe_send_text(
             instance_name=tenant.whatsapp_instance_id,
             phone=sender_phone,
-            text="Perfecto. Tu cita quedo confirmada. Te esperamos.",
+            text=confirmation_message,
         )
         return {
             "processed": True,
