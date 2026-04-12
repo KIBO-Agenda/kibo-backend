@@ -32,6 +32,17 @@ def _normalize_digits(value: str | None) -> str:
     return "".join(ch for ch in (value or "") if ch.isdigit())
 
 
+def _phone_variants(digits: str) -> set[str]:
+    variants = {digits}
+    if digits.startswith("57") and len(digits) > 10:
+        variants.add(digits[2:])
+    if len(digits) > 10:
+        variants.add(digits[-10:])
+    if len(digits) == 10 and digits.startswith("3"):
+        variants.add(f"57{digits}")
+    return {variant for variant in variants if variant}
+
+
 def _normalize_keyword(value: str | None) -> str:
     return "".join(ch for ch in (value or "").upper().strip() if ch.isalnum())
 
@@ -86,6 +97,7 @@ class WhatsAppWebhookService:
             return {"processed": False, "reason": "duplicate_message"}
 
         normalized_phone = _normalize_digits(sender_phone)
+        incoming_phone_variants = _phone_variants(normalized_phone)
         normalized_text = _normalize_keyword(text)
         if not normalized_text:
             return {"processed": False, "reason": "payload_incomplete"}
@@ -108,7 +120,10 @@ class WhatsAppWebhookService:
                 if appointment.client_id:
                     client = self.client_repo.get_by_id(tenant.id, appointment.client_id)
                     if client and client.phone:
-                        normalized_phone = _normalize_digits(client.phone)
+                        matched_phone = _normalize_digits(client.phone)
+                        if matched_phone:
+                            normalized_phone = matched_phone
+                            incoming_phone_variants = _phone_variants(matched_phone)
                         match_source = "remote_id"
                         logger.info(
                             f"[WH_MATCH] Cita encontrada por RemoteID: appointment_id={appointment.id}, "
@@ -172,6 +187,7 @@ class WhatsAppWebhookService:
             result = await self._handle_appointment_confirmation(
                 tenant_id=tenant.id,
                 sender_phone=normalized_phone,
+                sender_phone_variants=incoming_phone_variants,
                 remote_matched_appointment=appointment,
                 remote_jid=remote_jid,
             )
@@ -189,6 +205,7 @@ class WhatsAppWebhookService:
             result = await self._handle_appointment_cancellation(
                 tenant_id=tenant.id,
                 sender_phone=normalized_phone,
+                sender_phone_variants=incoming_phone_variants,
                 remote_matched_appointment=appointment,
                 remote_jid=remote_jid,
             )
@@ -206,6 +223,7 @@ class WhatsAppWebhookService:
             result = await self._handle_reschedule_request(
                 tenant_id=tenant.id,
                 sender_phone=normalized_phone,
+                sender_phone_variants=incoming_phone_variants,
                 remote_matched_appointment=appointment,
                 remote_jid=remote_jid,
             )
@@ -258,6 +276,7 @@ class WhatsAppWebhookService:
         *,
         tenant_id: uuid.UUID,
         sender_phone: str,
+        sender_phone_variants: set[str] | None = None,
         remote_matched_appointment=None,
         remote_jid: str | None = None,
     ) -> dict[str, Any]:
@@ -272,7 +291,20 @@ class WhatsAppWebhookService:
             now=now_local,
         )
         if not appointment:
+            logger.info(
+                "[WH_MATCH] Pending appointment not found: tenant=%s phone=%s remote_jid=%s",
+                tenant_id,
+                sender_phone,
+                remote_jid,
+            )
             return {"processed": False, "reason": "pending_appointment_not_found"}
+
+        phone_to_reply = self._resolve_reply_phone(
+            tenant_id=tenant_id,
+            appointment=appointment,
+            sender_phone=sender_phone,
+            sender_phone_variants=sender_phone_variants,
+        )
 
         self.appointment_repo.update(
             tenant_id,
@@ -287,7 +319,7 @@ class WhatsAppWebhookService:
 
         await self._safe_send_text(
             instance_name=tenant.whatsapp_instance_id,
-            phone=sender_phone,
+            phone=phone_to_reply,
             text=confirmation_message,
         )
         return {
@@ -302,6 +334,7 @@ class WhatsAppWebhookService:
         *,
         tenant_id: uuid.UUID,
         sender_phone: str,
+        sender_phone_variants: set[str] | None = None,
         remote_matched_appointment=None,
         remote_jid: str | None = None,
     ) -> dict[str, Any]:
@@ -318,6 +351,13 @@ class WhatsAppWebhookService:
         if not appointment:
             return {"processed": False, "reason": "pending_appointment_not_found"}
 
+        phone_to_reply = self._resolve_reply_phone(
+            tenant_id=tenant_id,
+            appointment=appointment,
+            sender_phone=sender_phone,
+            sender_phone_variants=sender_phone_variants,
+        )
+
         self.appointment_repo.update(
             tenant_id,
             appointment.id,
@@ -328,7 +368,7 @@ class WhatsAppWebhookService:
 
         await self._safe_send_text(
             instance_name=tenant.whatsapp_instance_id,
-            phone=sender_phone,
+            phone=phone_to_reply,
             text="Listo. Tu cita fue cancelada.",
         )
 
@@ -352,6 +392,7 @@ class WhatsAppWebhookService:
         *,
         tenant_id: uuid.UUID,
         sender_phone: str,
+        sender_phone_variants: set[str] | None = None,
         remote_matched_appointment=None,
         remote_jid: str | None = None,
     ) -> dict[str, Any]:
@@ -367,6 +408,13 @@ class WhatsAppWebhookService:
         )
         if not appointment:
             return {"processed": False, "reason": "pending_appointment_not_found"}
+
+        phone_to_reply = self._resolve_reply_phone(
+            tenant_id=tenant_id,
+            appointment=appointment,
+            sender_phone=sender_phone,
+            sender_phone_variants=sender_phone_variants,
+        )
 
         related = self.appointment_repo.get_by_id_with_relations(
             tenant_id=tenant_id,
@@ -386,7 +434,7 @@ class WhatsAppWebhookService:
 
         await self._safe_send_text(
             instance_name=tenant.whatsapp_instance_id,
-            phone=sender_phone,
+            phone=phone_to_reply,
             text=(
                 f"Soy Kibo, el asistente de {tenant.name}. "
                 f"Para reagendar {service_name}, usa este link: {business_link}. "
@@ -652,10 +700,35 @@ class WhatsAppWebhookService:
         if not instance_name:
             return
         try:
+            normalized_phone = "".join(ch for ch in phone if ch.isdigit())
+            target_phone = normalized_phone or phone
             await self.evolution_client.send_text(
                 instance_name=instance_name,
-                phone=phone,
+                phone=target_phone,
                 text=text,
             )
         except EvolutionClientError as exc:
             logger.warning("WhatsApp send failed: %s", exc)
+
+    def _resolve_reply_phone(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        appointment: Appointment,
+        sender_phone: str,
+        sender_phone_variants: set[str] | None,
+    ) -> str:
+        client = self.client_repo.get_by_id(tenant_id, appointment.client_id)
+        if not client or not client.phone:
+            return sender_phone
+
+        client_digits = _normalize_digits(client.phone)
+        if not client_digits:
+            return sender_phone
+
+        variants = sender_phone_variants or _phone_variants(_normalize_digits(sender_phone))
+        client_variants = _phone_variants(client_digits)
+        if variants and client_variants and not (variants & client_variants):
+            return sender_phone
+
+        return client_digits

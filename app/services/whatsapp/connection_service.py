@@ -224,3 +224,29 @@ class WhatsAppConnectionService:
             "instance_name": instance_name,
             "status": "disconnected",
         }
+
+    async def sync_webhook(self, *, tenant_id: uuid.UUID) -> dict[str, Any]:
+        tenant = self.tenant_repo.get_by_id(tenant_id)
+        if not tenant:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+        instance_name = tenant.whatsapp_instance_id
+        if not instance_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="WhatsApp instance not configured",
+            )
+
+        try:
+            await self.evolution_client.ensure_webhook(instance_name=instance_name)
+        except EvolutionClientError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(exc),
+            ) from exc
+
+        return {
+            "ok": True,
+            "instance_name": instance_name,
+            "webhook_url": self.evolution_client.settings.EVOLUTION_WEBHOOK_URL,
+        }

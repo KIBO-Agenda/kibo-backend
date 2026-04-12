@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.schemas import WHATSAPP_SCHEMA
 
 
 class WhatsAppSession(Base):
@@ -16,6 +17,7 @@ class WhatsAppSession(Base):
             "status IN ('connected', 'disconnected', 'connecting', 'qr_required')",
             name="ck_whatsapp_sessions_status",
         ),
+        {"schema": WHATSAPP_SCHEMA},
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

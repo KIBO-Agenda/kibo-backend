@@ -6,10 +6,12 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.schemas import WHATSAPP_SCHEMA
 
 
 class ProcessedWebhook(Base):
     __tablename__ = "processed_webhooks"
+    __table_args__ = {"schema": WHATSAPP_SCHEMA}
 
     message_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(

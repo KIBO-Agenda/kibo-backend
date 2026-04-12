@@ -6,8 +6,8 @@ services:
       AUTHENTICATION_API_KEY: kibo-dev-key
       SESSION_CLIENT: NOWEB
       DATABASE_PROVIDER: postgresql
-      DATABASE_URL: postgresql://postgres:root@localhost:5432/evolution?schema=public
-      DATABASE_CONNECTION_URI: postgresql://postgres:root@localhost:5432/evolution?schema=public
+      DATABASE_URL: postgresql://postgres:root@localhost:5432/evolution?schema=whatsapp
+      DATABASE_CONNECTION_URI: postgresql://postgres:root@localhost:5432/evolution?schema=whatsapp
       CONFIG_SESSION_PHONE_VERSION: 2.3000.1035692802
       CACHE_REDIS_ENABLED: "false"
       CACHE_LOCAL_ENABLED: "true"

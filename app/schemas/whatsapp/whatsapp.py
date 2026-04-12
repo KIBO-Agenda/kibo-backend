@@ -74,3 +74,9 @@ class WhatsAppLogoutResponse(BaseModel):
     ok: bool
     instance_name: str | None
     status: str
+
+
+class WhatsAppWebhookSyncResponse(BaseModel):
+    ok: bool
+    instance_name: str
+    webhook_url: str

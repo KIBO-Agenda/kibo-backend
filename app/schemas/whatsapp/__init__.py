@@ -5,6 +5,7 @@ from app.schemas.whatsapp.whatsapp import (
     WhatsAppWebhookResponse,
     WhatsAppInstanceResponse,
     WhatsAppLogoutResponse,
+    WhatsAppWebhookSyncResponse,
     WhatsAppQrResponse,
     WhatsAppStatusResponse,
     WebhookProcessResponse,
@@ -19,5 +20,6 @@ __all__ = [
     "WhatsAppQrResponse",
     "WhatsAppStatusResponse",
     "WhatsAppLogoutResponse",
+    "WhatsAppWebhookSyncResponse",
     "WebhookProcessResponse",
 ]

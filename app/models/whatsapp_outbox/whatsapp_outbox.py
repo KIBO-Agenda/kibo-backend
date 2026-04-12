@@ -7,6 +7,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.schemas import WHATSAPP_SCHEMA
 
 
 class WhatsAppOutbox(Base):
@@ -20,6 +21,7 @@ class WhatsAppOutbox(Base):
         ),
         CheckConstraint("attempts >= 0", name="ck_whatsapp_outbox_attempts_non_negative"),
         CheckConstraint("jitter_seconds >= 0", name="ck_whatsapp_outbox_jitter_non_negative"),
+        {"schema": WHATSAPP_SCHEMA},
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

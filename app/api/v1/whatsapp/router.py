@@ -20,6 +20,7 @@ from app.schemas.whatsapp import (
     WhatsAppStatusResponse,
     WebhookProcessResponse,
     WhatsAppWebhookResponse,
+    WhatsAppWebhookSyncResponse,
 )
 from app.services.whatsapp import WhatsAppConnectionService, WhatsAppOutboxService, WhatsAppWebhookService
 
@@ -286,6 +287,16 @@ async def logout_whatsapp_instance(
     service = WhatsAppConnectionService(db)
     result = await service.logout(tenant_id=owner_user.tenant_id)
     return WhatsAppLogoutResponse(**result)
+
+
+@router.post("/whatsapp/sync-webhook", response_model=WhatsAppWebhookSyncResponse)
+async def sync_whatsapp_webhook(
+    db: Annotated[Session, Depends(get_db)],
+    owner_user: Annotated[User, Depends(require_owner)],
+):
+    service = WhatsAppConnectionService(db)
+    result = await service.sync_webhook(tenant_id=owner_user.tenant_id)
+    return WhatsAppWebhookSyncResponse(**result)
 
 
 @router.post("/messaging/outbox/enqueue", response_model=dict)

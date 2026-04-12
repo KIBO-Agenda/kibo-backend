@@ -274,14 +274,14 @@ def test_scheduler_updates_last_notification_type_for_24h_and_2h(db: Session, mo
         time_start=time(14, 0),
     )
 
-    # 16:00 UTC -> 11:00 (-05), so this is within the next 2 hours from 10:00 local
+    # 11:00 local, so this is within the next 2 hours from 10:00 local
     appt_2h = _create_appointment(
         db,
         tenant_id=tenant.id,
         client_id=client.id,
         service_id=service.id,
         appointment_date=fixed_now.date(),
-        time_start=time(16, 0),
+        time_start=time(11, 0),
     )
 
     scheduler = ReminderScheduler(lambda: db)
@@ -298,6 +298,67 @@ def test_scheduler_updates_last_notification_type_for_24h_and_2h(db: Session, mo
     assert appt_2h.last_notification_type == "reminder_2h"
     assert appt_2h.reminder_2h_sent is True
     assert len(calls) >= 2
+
+
+def test_process_tomorrow_reminders_force_and_dry_run(db: Session, monkeypatch):
+    sent_calls: list[dict] = []
+
+    async def _fake_send_text(self, *, instance_name: str, phone: str, text: str):
+        sent_calls.append({"instance_name": instance_name, "phone": phone, "text": text})
+        return {"key": {"remoteJid": "573001112233@s.whatsapp.net"}}
+
+    monkeypatch.setattr(EvolutionClient, "send_text", _fake_send_text)
+
+    fixed_now = datetime(2026, 4, 11, 10, 0, tzinfo=timezone(timedelta(hours=-5)))
+    from app.services.scheduler import reminder_scheduler as reminder_module
+
+    monkeypatch.setattr(reminder_module, "now_for_timezone", lambda tz: fixed_now)
+
+    tenant = _create_tenant(db, instance_name="instance-force-dry")
+    client = _create_client(db, tenant.id, name="Camila", phone="3001112233")
+    service = _create_service(db, tenant.id)
+    appointment = _create_appointment(
+        db,
+        tenant_id=tenant.id,
+        client_id=client.id,
+        service_id=service.id,
+        appointment_date=(fixed_now.date() + timedelta(days=1)),
+        time_start=time(15, 0),
+    )
+
+    scheduler = ReminderScheduler(lambda: db)
+
+    import asyncio
+
+    dry = asyncio.run(
+        scheduler.process_tomorrow_reminders(
+            tenant_id=tenant.id,
+            dry_run=True,
+        )
+    )
+    assert dry["sent"] == 1
+    assert len(sent_calls) == 0
+
+    appointment.reminder_24h_sent = True
+    appointment.last_notification_type = "reminder_24h"
+    db.commit()
+
+    without_force = asyncio.run(
+        scheduler.process_tomorrow_reminders(
+            tenant_id=tenant.id,
+            force=False,
+        )
+    )
+    assert without_force["sent"] == 0
+
+    with_force = asyncio.run(
+        scheduler.process_tomorrow_reminders(
+            tenant_id=tenant.id,
+            force=True,
+        )
+    )
+    assert with_force["sent"] == 1
+    assert len(sent_calls) == 1
 
 
 def test_webhook_ignores_group_messages(test_client):

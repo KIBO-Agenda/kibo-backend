@@ -450,11 +450,7 @@ class AppointmentRepository:
         phone: str,
         now: datetime,
     ) -> Appointment | None:
-        """Return nearest pending appointment for a sender phone.
-
-        Handles phone variants with/without country code and supports a fallback to
-        recent pending appointments when the original slot time has just passed.
-        """
+        """Return nearest pending appointment for a sender phone."""
         sender_digits = _normalize_digits(phone)
         if not sender_digits:
             return None
@@ -493,7 +489,7 @@ class AppointmentRepository:
                 )
             )
             .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
-            .limit(100)
+            .limit(300)
         ).all()
 
         for appointment, client_phone in upcoming_rows:
@@ -503,7 +499,7 @@ class AppointmentRepository:
         recent_rows = self.db.execute(
             base_stmt
             .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
-            .limit(100)
+            .limit(300)
         ).all()
 
         for appointment, client_phone in recent_rows:

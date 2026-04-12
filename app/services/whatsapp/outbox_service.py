@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
 import uuid
 from datetime import timedelta
@@ -15,6 +16,9 @@ from app.repositories.tenant import TenantRepository
 from app.repositories.whatsapp_outbox import WhatsAppOutboxRepository
 from app.services.whatsapp.evolution_client import EvolutionClient
 from app.services.whatsapp.template_engine import resolve_variables, select_variant
+
+
+logger = logging.getLogger(__name__)
 
 
 class WhatsAppOutboxService:
@@ -141,6 +145,13 @@ class WhatsAppOutboxService:
                     provider_payload=payload if isinstance(payload, dict) else {"raw": str(payload)},
                 )
             except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Outbox send failed: tenant=%s message_id=%s phone=%s error=%s",
+                    tenant.id,
+                    message.id,
+                    message.phone,
+                    exc,
+                )
                 self.outbox_repo.retry_or_fail(
                     message_id=message.id,
                     now=now_bogota() + timedelta(seconds=0),

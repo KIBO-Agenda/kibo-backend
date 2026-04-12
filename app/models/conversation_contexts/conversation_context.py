@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.schemas import WHATSAPP_SCHEMA
 
 
 class ConversationContext(Base):
@@ -14,6 +15,7 @@ class ConversationContext(Base):
         Index("idx_conversation_contexts_tenant", "tenant_id"),
         Index("idx_conversation_contexts_client_phone", "client_phone"),
         Index("idx_conversation_contexts_context_token", "context_token", unique=True),
+        {"schema": WHATSAPP_SCHEMA},
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
