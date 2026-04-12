@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, time, timedelta
+import re
 
 from sqlalchemy import and_, case, func, select, update
 from sqlalchemy.orm import Session
@@ -507,6 +508,60 @@ class AppointmentRepository:
                 return appointment
 
         return None
+
+    def get_nearest_pending_by_client_name(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        client_name: str,
+        now: datetime,
+    ) -> Appointment | None:
+        normalized = " ".join(
+            token for token in re.split(r"\s+", (client_name or "").strip().lower()) if len(token) >= 3
+        )
+        if not normalized:
+            return None
+
+        tokens = normalized.split(" ")
+        base_stmt = (
+            select(Appointment)
+            .join(
+                Client,
+                and_(
+                    Client.id == Appointment.client_id,
+                    Client.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.PENDING,
+            )
+        )
+
+        for token in tokens:
+            base_stmt = base_stmt.where(func.lower(Client.name).like(f"%{token}%"))
+
+        upcoming = self.db.execute(
+            base_stmt
+            .where(
+                (Appointment.appointment_date > now.date())
+                | (
+                    (Appointment.appointment_date == now.date())
+                    & (Appointment.time_start >= now.time())
+                )
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+            .limit(1)
+        ).scalars().first()
+        if upcoming:
+            return upcoming
+
+        recent = self.db.execute(
+            base_stmt
+            .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
+            .limit(1)
+        ).scalars().first()
+        return recent
 
     def has_pending_in_next_hours_by_client_phone(
         self,
