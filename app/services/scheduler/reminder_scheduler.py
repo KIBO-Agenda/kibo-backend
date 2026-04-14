@@ -239,13 +239,15 @@ class ReminderScheduler:
         if not phone.startswith("57"):
             phone = f"57{phone.lstrip('0+')}"
 
+        destination_jid = f"{phone}@s.whatsapp.net"
         response = await self.evolution_client.send_text(
             instance_name=tenant.whatsapp_instance_id,
             phone=phone,
             text=message,
+            api_key=tenant.whatsapp_apikey,
         )
 
-        remote_id = self._extract_remote_id(response)
+        remote_id = self._extract_remote_id(response) or destination_jid
         logger.info(
             "[WA_REMINDER] Evolution response captured",
             extra={
@@ -256,18 +258,7 @@ class ReminderScheduler:
             },
         )
 
-        if remote_id:
-            appointment.whatsapp_remote_id = remote_id
-        else:
-            logger.warning(
-                "[WA_REMINDER] remote_id missing in provider response",
-                extra={
-                    "tenant_id": str(tenant.id),
-                    "appointment_id": str(appointment.id),
-                    "reminder_type": reminder_type,
-                    "provider_response": response,
-                },
-            )
+        appointment.whatsapp_remote_id = remote_id
 
     @staticmethod
     def _appointment_datetime_for_tenant(*, tenant: Tenant, appointment: Appointment) -> datetime:

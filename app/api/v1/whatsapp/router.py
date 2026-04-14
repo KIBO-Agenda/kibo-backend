@@ -65,11 +65,25 @@ def _extract_phone(payload: dict[str, Any]) -> str | None:
     """
     data_candidate = payload.get("data")
     data = data_candidate if isinstance(data_candidate, dict) else {}
+    key_candidate = data.get("key")
+    key_data = key_candidate if isinstance(key_candidate, dict) else {}
 
-    # Primary candidates for phone extraction (exclude remoteJid-related fields)
+    sender_pn = _extract_sender_pn_jid(payload)
+    sender_jid = _extract_sender_jid(payload)
+
+    # Priority for lid-safe extraction:
+    # senderPn -> sender -> participant -> remoteJid -> plain fields
     candidates = [
+        sender_pn,
+        sender_jid,
+        key_data.get("participant"),
+        key_data.get("remoteJid"),
+        data.get("participant"),
+        data.get("remoteJid"),
+        payload.get("participant"),
+        payload.get("remoteJid"),
         payload.get("sender"),
-        data.get("sender"), 
+        data.get("sender"),
         payload.get("phone"),
         payload.get("number"),
         payload.get("from"),
@@ -78,26 +92,60 @@ def _extract_phone(payload: dict[str, Any]) -> str | None:
         data.get("from"),
     ]
 
-    # Only extract phone from specific WhatsApp JID formats (@s.whatsapp.net, @c.us)
-    # Explicitly exclude @lid and @g.us formats
+    # Pass 1: prefer explicit WhatsApp phone JIDs.
     for candidate in candidates:
         if not isinstance(candidate, str):
             continue
-        
-        # Skip non-phone formats
+
         lowered = candidate.lower()
         if "@lid" in lowered or "@g.us" in lowered:
             continue
-            
-        # Extract digits
-        digits = "".join(ch for ch in candidate if ch.isdigit())
-        if not digits:
+        if "@s.whatsapp.net" not in lowered and "@c.us" not in lowered:
             continue
 
-        # Only accept WhatsApp phone formats
-        if "@s.whatsapp.net" in lowered or "@c.us" in lowered:
+        digits = "".join(ch for ch in candidate if ch.isdigit())
+        if digits:
             return digits
-    
+
+    # Pass 2: fallback for providers that send plain numbers.
+    for candidate in candidates:
+        if not isinstance(candidate, str):
+            continue
+
+        lowered = candidate.lower()
+        if "@lid" in lowered or "@g.us" in lowered:
+            continue
+
+        digits = "".join(ch for ch in candidate if ch.isdigit())
+        if len(digits) >= 10:
+            return digits
+
+    return None
+
+
+def _extract_sender_pn_jid(payload: dict[str, Any]) -> str | None:
+    data_candidate = payload.get("data")
+    data = data_candidate if isinstance(data_candidate, dict) else {}
+    candidates = [
+        data.get("senderPn"),
+        payload.get("senderPn"),
+    ]
+    for sender_pn in candidates:
+        if isinstance(sender_pn, str) and sender_pn.strip():
+            return sender_pn.strip()
+    return None
+
+
+def _extract_sender_jid(payload: dict[str, Any]) -> str | None:
+    data_candidate = payload.get("data")
+    data = data_candidate if isinstance(data_candidate, dict) else {}
+    candidates = [
+        data.get("sender"),
+        payload.get("sender"),
+    ]
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
     return None
 
 
@@ -123,9 +171,9 @@ def _extract_remote_jid(payload: dict[str, Any]) -> str | None:
     key_candidate = data.get("key")
     key_data = key_candidate if isinstance(key_candidate, dict) else {}
     candidates = [
-        payload.get("remoteJid"),
-        data.get("remoteJid"),
         key_data.get("remoteJid"),
+        data.get("remoteJid"),
+        payload.get("remoteJid"),
         key_data.get("participant"),
         payload.get("participant"),
         data.get("participant"),
@@ -361,6 +409,9 @@ async def evolution_webhook(
                 text=incoming_text,
                 message_id=_extract_message_id(payload),
                 sender_name=_extract_sender_name(payload),
+                sender_jid=_extract_sender_jid(payload),
+                sender_pn_jid=_extract_sender_pn_jid(payload),
+                remote_jid=_extract_remote_jid(payload),
             )
             return WebhookProcessResponse(
                 matched_keyword=False,
@@ -437,6 +488,8 @@ async def whatsapp_webhook(
     phone = _extract_phone(payload)
     incoming_text = _extract_text(payload)
     remote_jid = _extract_remote_jid(payload)
+    sender_jid = _extract_sender_jid(payload)
+    sender_pn_jid = _extract_sender_pn_jid(payload)
 
     if not instance_name or not incoming_text:
         return WhatsAppWebhookResponse(
@@ -465,6 +518,8 @@ async def whatsapp_webhook(
             message_id=message_id,
             sender_name=sender_name,
             remote_jid=remote_jid,
+            sender_jid=sender_jid,
+            sender_pn_jid=sender_pn_jid,
         )
     except Exception as e:  # noqa: BLE001
         logger.error(f"[WH_ERROR] Exception in webhook processing: {str(e)}")

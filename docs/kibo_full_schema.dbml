@@ -1,0 +1,702 @@
+// Auto-generated from live Postgres metadata (agenda)
+// Includes schemas: public + whatsapp
+
+Table "public.alembic_version" {
+  version_num varchar [pk, not null]
+}
+
+Table "public.appointments" {
+  id uuid [pk, not null]
+  tenant_id uuid [not null]
+  client_id uuid [not null]
+  user_id uuid [not null]
+  service_id uuid [not null]
+  appointment_date date [not null]
+  time_start time [not null]
+  time_end time [not null]
+  status appointment_status [not null]
+  notes text
+  created_at timestamptz [not null]
+  appointment_time timestamptz
+  confirmation_status varchar [not null]
+  reminder_24h_sent boolean [not null]
+  reminder_2h_sent boolean [not null]
+  last_notification_type varchar [not null]
+  whatsapp_remote_id varchar
+}
+
+Table "public.clients" {
+  id uuid [pk, not null]
+  tenant_id uuid [not null]
+  name varchar [not null]
+  phone varchar
+  notes text
+  created_at timestamptz [not null]
+  whatsapp_opt_out boolean [not null]
+  whatsapp_opt_out_at timestamptz
+
+  Indexes {
+    (tenant_id, phone) [unique]
+  }
+}
+
+Table "public.services" {
+  id uuid [pk, not null]
+  tenant_id uuid [not null]
+  name varchar [not null]
+  duration int [not null]
+  price decimal [not null]
+  is_active boolean [not null]
+  created_at timestamptz [not null]
+}
+
+Table "public.super_admins" {
+  id uuid [pk, not null]
+  name varchar [not null]
+  email varchar [not null, unique]
+  password_hash varchar [not null]
+  created_at timestamptz [not null]
+}
+
+Table "public.tenant_configs" {
+  tenant_id uuid [pk, not null]
+  waitlist_manual_approval boolean [not null]
+  whatsapp_enabled boolean [not null]
+}
+
+Table "public.tenant_payments" {
+  id uuid [pk, not null]
+  tenant_id uuid [not null]
+  amount decimal [not null]
+  payment_date timestamptz [not null]
+  payment_method varchar
+  reference_code varchar [unique]
+}
+
+Table "public.tenants" {
+  id uuid [pk, not null]
+  name varchar [not null]
+  phone varchar
+  subscription_status subscription_status [not null]
+  subscription_valid_until timestamptz [not null]
+  slot_duration int [not null]
+  created_at timestamptz [not null]
+  max_users int [not null]
+  business_hours jsonb [not null]
+  trial_ends_at timestamptz [not null]
+  whatsapp_instance_id varchar
+  timezone_identifier varchar [not null]
+  message_templates jsonb [not null]
+  plan_tier plan_tier [not null]
+  whatsapp_apikey varchar
+}
+
+Table "public.users" {
+  id uuid [pk, not null]
+  tenant_id uuid [not null]
+  name varchar [not null]
+  email varchar [not null, unique]
+  password_hash varchar [not null]
+  role user_role [not null]
+  is_active boolean [not null]
+  created_at timestamptz [not null]
+}
+
+Table "public.waitlists" {
+  id uuid [pk, not null]
+  tenant_id uuid [not null]
+  client_name varchar [not null]
+  client_phone varchar
+  target_date date [not null]
+  notes text
+  is_resolved boolean [not null]
+  created_at timestamptz [not null]
+  service_id uuid
+}
+
+Table "whatsapp.Chat" {
+  id text [pk, not null]
+  remoteJid varchar [not null]
+  labels jsonb
+  createdAt timestamp
+  updatedAt timestamp
+  instanceId text [not null]
+  name varchar
+  unreadMessages int [not null]
+}
+
+Table "whatsapp.Chatwoot" {
+  id text [pk, not null]
+  enabled boolean
+  accountId varchar
+  token varchar
+  url varchar
+  nameInbox varchar
+  signMsg boolean
+  signDelimiter varchar
+  number varchar
+  reopenConversation boolean
+  conversationPending boolean
+  mergeBrazilContacts boolean
+  importContacts boolean
+  importMessages boolean
+  daysLimitImportMessages int
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+  logo varchar
+  organization varchar
+  ignoreJids jsonb
+}
+
+Table "whatsapp.Contact" {
+  id text [pk, not null]
+  remoteJid varchar [not null]
+  pushName varchar
+  profilePicUrl varchar
+  createdAt timestamp
+  updatedAt timestamp
+  instanceId text [not null]
+}
+
+Table "whatsapp.Dify" {
+  id text [pk, not null]
+  enabled boolean [not null]
+  botType DifyBotType [not null]
+  apiUrl varchar
+  apiKey varchar
+  expire int
+  keywordFinish varchar
+  delayMessage int
+  unknownMessage varchar
+  listeningFromMe boolean
+  stopBotFromMe boolean
+  keepOpen boolean
+  debounceTime int
+  ignoreJids jsonb
+  triggerType TriggerType
+  triggerOperator TriggerOperator
+  triggerValue text
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+  description varchar
+  splitMessages boolean
+  timePerChar int
+}
+
+Table "whatsapp.DifySetting" {
+  id text [pk, not null]
+  expire int
+  keywordFinish varchar
+  delayMessage int
+  unknownMessage varchar
+  listeningFromMe boolean
+  stopBotFromMe boolean
+  keepOpen boolean
+  debounceTime int
+  ignoreJids jsonb
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  difyIdFallback varchar
+  instanceId text [not null]
+  splitMessages boolean
+  timePerChar int
+}
+
+Table "whatsapp.EvolutionBot" {
+  id text [pk, not null]
+  enabled boolean [not null]
+  description varchar
+  apiUrl varchar
+  apiKey varchar
+  expire int
+  keywordFinish varchar
+  delayMessage int
+  unknownMessage varchar
+  listeningFromMe boolean
+  stopBotFromMe boolean
+  keepOpen boolean
+  debounceTime int
+  ignoreJids jsonb
+  triggerType TriggerType
+  triggerOperator TriggerOperator
+  triggerValue text
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+  splitMessages boolean
+  timePerChar int
+}
+
+Table "whatsapp.EvolutionBotSetting" {
+  id text [pk, not null]
+  expire int
+  keywordFinish varchar
+  delayMessage int
+  unknownMessage varchar
+  listeningFromMe boolean
+  stopBotFromMe boolean
+  keepOpen boolean
+  debounceTime int
+  ignoreJids jsonb
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  botIdFallback varchar
+  instanceId text [not null]
+  splitMessages boolean
+  timePerChar int
+}
+
+Table "whatsapp.Flowise" {
+  id text [pk, not null]
+  enabled boolean [not null]
+  description varchar
+  apiUrl varchar
+  apiKey varchar
+  expire int
+  keywordFinish varchar
+  delayMessage int
+  unknownMessage varchar
+  listeningFromMe boolean
+  stopBotFromMe boolean
+  keepOpen boolean
+  debounceTime int
+  ignoreJids jsonb
+  triggerType TriggerType
+  triggerOperator TriggerOperator
+  triggerValue text
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+  splitMessages boolean
+  timePerChar int
+}
+
+Table "whatsapp.FlowiseSetting" {
+  id text [pk, not null]
+  expire int
+  keywordFinish varchar
+  delayMessage int
+  unknownMessage varchar
+  listeningFromMe boolean
+  stopBotFromMe boolean
+  keepOpen boolean
+  debounceTime int
+  ignoreJids jsonb
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  flowiseIdFallback varchar
+  instanceId text [not null]
+  splitMessages boolean
+  timePerChar int
+}
+
+Table "whatsapp.Instance" {
+  id text [pk, not null]
+  name varchar [not null]
+  connectionStatus InstanceConnectionStatus [not null]
+  ownerJid varchar
+  profilePicUrl varchar
+  integration varchar
+  number varchar
+  token varchar
+  clientName varchar
+  createdAt timestamp
+  updatedAt timestamp
+  profileName varchar
+  businessId varchar
+  disconnectionAt timestamp
+  disconnectionObject jsonb
+  disconnectionReasonCode int
+}
+
+Table "whatsapp.IntegrationSession" {
+  id text [pk, not null]
+  sessionId varchar [not null]
+  remoteJid varchar [not null]
+  pushName text
+  status SessionStatus [not null]
+  awaitUser boolean [not null]
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+  parameters jsonb
+  context jsonb
+  botId text
+  type varchar
+}
+
+Table "whatsapp.IsOnWhatsapp" {
+  id text [pk, not null]
+  remoteJid varchar [not null]
+  jidOptions text [not null]
+  createdAt timestamp [not null]
+  updatedAt timestamp [not null]
+}
+
+Table "whatsapp.Label" {
+  id text [pk, not null]
+  labelId varchar
+  name varchar [not null]
+  color varchar [not null]
+  predefinedId varchar
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+}
+
+Table "whatsapp.Media" {
+  id text [pk, not null]
+  fileName varchar [not null]
+  type varchar [not null]
+  mimetype varchar [not null]
+  createdAt date
+  messageId text [not null]
+  instanceId text [not null]
+}
+
+Table "whatsapp.Message" {
+  id text [pk, not null]
+  key jsonb [not null]
+  pushName varchar
+  participant varchar
+  messageType varchar [not null]
+  message jsonb [not null]
+  contextInfo jsonb
+  source DeviceMessage [not null]
+  messageTimestamp int [not null]
+  chatwootMessageId int
+  chatwootInboxId int
+  chatwootConversationId int
+  chatwootContactInboxSourceId varchar
+  chatwootIsRead boolean
+  instanceId text [not null]
+  webhookUrl varchar
+  sessionId text
+  status varchar
+}
+
+Table "whatsapp.MessageUpdate" {
+  id text [pk, not null]
+  keyId varchar [not null]
+  remoteJid varchar [not null]
+  fromMe boolean [not null]
+  participant varchar
+  pollUpdates jsonb
+  status varchar [not null]
+  messageId text [not null]
+  instanceId text [not null]
+}
+
+Table "whatsapp.OpenaiBot" {
+  id text [pk, not null]
+  assistantId varchar
+  model varchar
+  systemMessages jsonb
+  assistantMessages jsonb
+  userMessages jsonb
+  maxTokens int
+  expire int
+  keywordFinish varchar
+  delayMessage int
+  unknownMessage varchar
+  listeningFromMe boolean
+  stopBotFromMe boolean
+  keepOpen boolean
+  debounceTime int
+  ignoreJids jsonb
+  triggerType TriggerType
+  triggerOperator TriggerOperator
+  triggerValue text
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  openaiCredsId text [not null]
+  instanceId text [not null]
+  enabled boolean [not null]
+  botType OpenaiBotType [not null]
+  description varchar
+  functionUrl varchar
+  splitMessages boolean
+  timePerChar int
+}
+
+Table "whatsapp.OpenaiCreds" {
+  id text [pk, not null]
+  apiKey varchar
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+  name varchar
+}
+
+Table "whatsapp.OpenaiSetting" {
+  id text [pk, not null]
+  expire int
+  keywordFinish varchar
+  delayMessage int
+  unknownMessage varchar
+  listeningFromMe boolean
+  stopBotFromMe boolean
+  keepOpen boolean
+  debounceTime int
+  ignoreJids jsonb
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  openaiCredsId text [not null]
+  openaiIdFallback varchar
+  instanceId text [not null]
+  speechToText boolean
+  splitMessages boolean
+  timePerChar int
+}
+
+Table "whatsapp.Proxy" {
+  id text [pk, not null]
+  enabled boolean [not null]
+  host varchar [not null]
+  port varchar [not null]
+  protocol varchar [not null]
+  username varchar [not null]
+  password varchar [not null]
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+}
+
+Table "whatsapp.Pusher" {
+  id text [pk, not null]
+  enabled boolean [not null]
+  appId varchar [not null]
+  key varchar [not null]
+  secret varchar [not null]
+  cluster varchar [not null]
+  useTLS boolean [not null]
+  events jsonb [not null]
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+}
+
+Table "whatsapp.Rabbitmq" {
+  id text [pk, not null]
+  enabled boolean [not null]
+  events jsonb [not null]
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+}
+
+Table "whatsapp.Session" {
+  id text [pk, not null]
+  sessionId text [not null]
+  creds text
+  createdAt timestamp [not null]
+}
+
+Table "whatsapp.Setting" {
+  id text [pk, not null]
+  rejectCall boolean [not null]
+  msgCall varchar
+  groupsIgnore boolean [not null]
+  alwaysOnline boolean [not null]
+  readMessages boolean [not null]
+  readStatus boolean [not null]
+  syncFullHistory boolean [not null]
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+  wavoipToken varchar
+}
+
+Table "whatsapp.Sqs" {
+  id text [pk, not null]
+  enabled boolean [not null]
+  events jsonb [not null]
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+}
+
+Table "whatsapp.Template" {
+  id text [pk, not null]
+  templateId varchar [not null]
+  name varchar [not null]
+  template jsonb [not null]
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+  webhookUrl varchar
+}
+
+Table "whatsapp.Typebot" {
+  id text [pk, not null]
+  enabled boolean [not null]
+  url varchar [not null]
+  typebot varchar [not null]
+  expire int
+  keywordFinish varchar
+  delayMessage int
+  unknownMessage varchar
+  listeningFromMe boolean
+  stopBotFromMe boolean
+  keepOpen boolean
+  createdAt timestamp
+  updatedAt timestamp
+  triggerType TriggerType
+  triggerOperator TriggerOperator
+  triggerValue text
+  instanceId text [not null]
+  debounceTime int
+  ignoreJids jsonb
+  description varchar
+}
+
+Table "whatsapp.TypebotSetting" {
+  id text [pk, not null]
+  expire int
+  keywordFinish varchar
+  delayMessage int
+  unknownMessage varchar
+  listeningFromMe boolean
+  stopBotFromMe boolean
+  keepOpen boolean
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+  debounceTime int
+  typebotIdFallback varchar
+  ignoreJids jsonb
+}
+
+Table "whatsapp.Webhook" {
+  id text [pk, not null]
+  url varchar [not null]
+  enabled boolean
+  events jsonb
+  webhookByEvents boolean
+  webhookBase64 boolean
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+  headers jsonb
+}
+
+Table "whatsapp.Websocket" {
+  id text [pk, not null]
+  enabled boolean [not null]
+  events jsonb [not null]
+  createdAt timestamp
+  updatedAt timestamp [not null]
+  instanceId text [not null]
+}
+
+Table "whatsapp._prisma_migrations" {
+  id varchar [pk, not null]
+  checksum varchar [not null]
+  finished_at timestamptz
+  migration_name varchar [not null]
+  logs text
+  rolled_back_at timestamptz
+  started_at timestamptz [not null]
+  applied_steps_count int [not null]
+}
+
+Table "whatsapp.conversation_contexts" {
+  id uuid [pk, not null]
+  tenant_id uuid [not null]
+  client_phone varchar [not null]
+  appointment_id uuid [not null]
+  context_type varchar [not null]
+  context_token varchar [not null]
+  created_at timestamptz [not null]
+  expires_at timestamptz [not null]
+}
+
+Table "whatsapp.processed_webhooks" {
+  message_id varchar [pk, not null]
+  tenant_id uuid [not null]
+  sender_phone varchar
+  processed_at timestamptz [not null]
+  remote_jid varchar
+}
+
+Table "whatsapp.whatsapp_outbox" {
+  id uuid [pk, not null]
+  business_id uuid [not null]
+  client_id uuid
+  appointment_id uuid
+  phone varchar [not null]
+  message_type varchar [not null]
+  template_variant_index int
+  rendered_text text [not null]
+  variables jsonb [not null]
+  provider_payload jsonb
+  provider_message_id varchar
+  status varchar [not null]
+  attempts int [not null]
+  next_attempt_at timestamptz [not null]
+  jitter_seconds int [not null]
+  error_message text
+  idempotency_key varchar [not null, unique]
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+  sent_at timestamptz
+}
+
+Table "whatsapp.whatsapp_sessions" {
+  id uuid [pk, not null]
+  tenant_id uuid [not null]
+  instance_name varchar [not null]
+  status varchar [not null]
+  last_seen_at timestamptz
+  created_at timestamptz [not null]
+}
+
+Ref: "public.appointments".service_id > "public.services".id
+Ref: "public.appointments".tenant_id > "public.tenants".id
+Ref: "public.appointments".client_id > "public.clients".id
+Ref: "public.appointments".user_id > "public.users".id
+Ref: "public.clients".tenant_id > "public.tenants".id
+Ref: "public.services".tenant_id > "public.tenants".id
+Ref: "public.tenant_configs".tenant_id > "public.tenants".id
+Ref: "public.tenant_payments".tenant_id > "public.tenants".id
+Ref: "public.waitlists".tenant_id > "public.tenants".id
+Ref: "whatsapp.Chat".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Chatwoot".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Contact".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Dify".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.DifySetting".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.DifySetting".difyIdFallback > "whatsapp.Dify".id
+Ref: "whatsapp.EvolutionBot".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.EvolutionBotSetting".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.EvolutionBotSetting".botIdFallback > "whatsapp.EvolutionBot".id
+Ref: "whatsapp.Flowise".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.FlowiseSetting".flowiseIdFallback > "whatsapp.Flowise".id
+Ref: "whatsapp.FlowiseSetting".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.IntegrationSession".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Label".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Media".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Media".messageId > "whatsapp.Message".id
+Ref: "whatsapp.Message".sessionId > "whatsapp.IntegrationSession".id
+Ref: "whatsapp.Message".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.MessageUpdate".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.MessageUpdate".messageId > "whatsapp.Message".id
+Ref: "whatsapp.OpenaiBot".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.OpenaiBot".openaiCredsId > "whatsapp.OpenaiCreds".id
+Ref: "whatsapp.OpenaiCreds".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.OpenaiSetting".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.OpenaiSetting".openaiCredsId > "whatsapp.OpenaiCreds".id
+Ref: "whatsapp.OpenaiSetting".openaiIdFallback > "whatsapp.OpenaiBot".id
+Ref: "whatsapp.Proxy".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Pusher".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Rabbitmq".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Session".sessionId > "whatsapp.Instance".id
+Ref: "whatsapp.Setting".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Sqs".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Template".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Typebot".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.TypebotSetting".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.TypebotSetting".typebotIdFallback > "whatsapp.Typebot".id
+Ref: "whatsapp.Webhook".instanceId > "whatsapp.Instance".id
+Ref: "whatsapp.Websocket".instanceId > "whatsapp.Instance".id

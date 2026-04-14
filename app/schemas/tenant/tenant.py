@@ -10,6 +10,7 @@ from app.models.tenant import PlanTier, SubscriptionStatus
 class TenantCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     phone: str | None = Field(None, max_length=20)
+    whatsapp_apikey: str | None = Field(None, max_length=255)
     plan_tier: PlanTier = PlanTier.STARTER
     slot_duration: int = Field(default=15, ge=5, le=120)
     max_users: int = Field(default=2, ge=1, le=99)
@@ -136,6 +137,7 @@ class TenantCreateWithHours(TenantCreate, TenantBusinessHoursMixin):
 class TenantUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     phone: str | None = Field(None, max_length=20)
+    whatsapp_apikey: str | None = Field(None, max_length=255)
     plan_tier: PlanTier | None = None
     slot_duration: int | None = Field(None, ge=5, le=120)
     max_users: int | None = Field(None, ge=1, le=99)
@@ -147,6 +149,7 @@ class TenantUpdate(BaseModel):
 class TenantSettingsUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     phone: str | None = Field(None, max_length=20)
+    whatsapp_apikey: str | None = Field(None, max_length=255)
     slot_duration: int | None = Field(None, ge=5, le=120)
     timezone_identifier: str | None = Field(None, min_length=3, max_length=64)
     business_hours: BusinessHours | None = None

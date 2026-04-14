@@ -33,6 +33,7 @@ def create_tenant(
     tenant = service.create_tenant(
         name=payload.name,
         phone=payload.phone,
+        whatsapp_apikey=payload.whatsapp_apikey,
         plan_tier=payload.plan_tier,
         slot_duration=payload.slot_duration,
         max_users=payload.max_users,
@@ -59,6 +60,7 @@ def update_tenant_settings(
         owner_user.tenant_id,
         name=payload.name,
         phone=payload.phone,
+        whatsapp_apikey=payload.whatsapp_apikey,
         slot_duration=payload.slot_duration,
         timezone_identifier=payload.timezone_identifier,
         business_hours=payload.business_hours,
@@ -157,6 +159,7 @@ def update_tenant(
         tenant_id,
         name=payload.name,
         phone=payload.phone,
+        whatsapp_apikey=payload.whatsapp_apikey,
         plan_tier=payload.plan_tier,
         slot_duration=payload.slot_duration,
         max_users=payload.max_users,

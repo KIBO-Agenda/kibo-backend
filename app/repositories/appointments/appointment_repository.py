@@ -9,6 +9,7 @@ from app.core.timezone import now_for_timezone
 from app.models.appointments import Appointment, AppointmentStatus
 from app.models.auth import User
 from app.models.clients import Client
+from app.models.conversation_contexts import ConversationContext
 from app.models.services import Service
 from app.models.tenant import Tenant
 
@@ -646,6 +647,91 @@ class AppointmentRepository:
             .limit(50)
         ).scalars().first()
         return recent
+
+    def get_nearest_pending_by_client_lid(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        whatsapp_lid: str,
+        now: datetime,
+    ) -> Appointment | None:
+        if not whatsapp_lid:
+            return None
+
+        base_stmt = (
+            select(Appointment)
+            .join(
+                Client,
+                and_(
+                    Client.id == Appointment.client_id,
+                    Client.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.PENDING,
+                Client.whatsapp_lid == whatsapp_lid,
+            )
+        )
+
+        upcoming = self.db.execute(
+            base_stmt
+            .where(
+                (Appointment.appointment_date > now.date())
+                | (
+                    (Appointment.appointment_date == now.date())
+                    & (Appointment.time_start >= now.time())
+                )
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+            .limit(1)
+        ).scalars().first()
+        if upcoming:
+            return upcoming
+
+        return self.db.execute(
+            base_stmt
+            .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
+            .limit(1)
+        ).scalars().first()
+
+    def get_nearest_pending_by_conversation_context_phone(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        sender_phone_variants: set[str],
+        now: datetime,
+    ) -> Appointment | None:
+        if not sender_phone_variants:
+            return None
+
+        rows = self.db.execute(
+            select(Appointment, ConversationContext.client_phone)
+            .join(
+                ConversationContext,
+                and_(
+                    ConversationContext.appointment_id == Appointment.id,
+                    ConversationContext.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.PENDING,
+                ConversationContext.expires_at > now,
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+            .limit(200)
+        ).all()
+
+        for appointment, context_phone in rows:
+            context_digits = _normalize_digits(context_phone)
+            if not context_digits:
+                continue
+            context_variants = _phone_variants(context_digits)
+            if sender_phone_variants & context_variants:
+                return appointment
+
+        return None
 
     def get_by_id_with_relations(
         self,

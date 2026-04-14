@@ -1,6 +1,6 @@
 services:
   evolution-api:
-    image: atendai/evolution-api:latest
+    image: atendai/evolution-api:v2.3.0
     network_mode: host
     environment:
       AUTHENTICATION_API_KEY: kibo-dev-key

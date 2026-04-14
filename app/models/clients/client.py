@@ -13,6 +13,7 @@ class Client(Base):
     __table_args__ = (
         Index("idx_clients_tenant", "tenant_id"),
         Index("idx_clients_phone", "phone"),
+        Index("idx_clients_tenant_whatsapp_lid", "tenant_id", "whatsapp_lid"),
         UniqueConstraint("tenant_id", "phone", name="idx_clients_tenant_phone_unique"),
     )
 
@@ -23,6 +24,7 @@ class Client(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    whatsapp_lid: Mapped[str | None] = mapped_column(String(255), nullable=True)
     whatsapp_opt_out: Mapped[bool] = mapped_column(
         Boolean(), nullable=False, server_default=text("false")
     )

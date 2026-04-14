@@ -100,6 +100,9 @@ class Tenant(Base):
     whatsapp_instance_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
+    whatsapp_apikey: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
     subscription_status: Mapped[SubscriptionStatus] = mapped_column(
         SAEnum(
             SubscriptionStatus,

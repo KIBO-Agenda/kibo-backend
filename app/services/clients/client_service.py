@@ -37,6 +37,7 @@ class ClientService:
         name: str | None = None,
         phone: str | None = None,
         notes: str | None = None,
+        whatsapp_lid: str | None = None,
     ):
         try:
             entity = self.client_repo.update(
@@ -45,6 +46,7 @@ class ClientService:
                 name=name,
                 phone=phone,
                 notes=notes,
+                whatsapp_lid=whatsapp_lid,
             )
         except IntegrityError as exc:
             raise HTTPException(

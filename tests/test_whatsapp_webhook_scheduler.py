@@ -11,7 +11,12 @@ from app.services.scheduler.reminder_scheduler import ReminderScheduler
 from app.services.whatsapp.evolution_client import EvolutionClient
 
 
-def _create_tenant(db: Session, *, instance_name: str = "instance-test") -> Tenant:
+def _create_tenant(
+    db: Session,
+    *,
+    instance_name: str = "instance-test",
+    apikey: str = "tenant-api-key",
+) -> Tenant:
     now = datetime.now(timezone.utc)
     tenant = Tenant(
         name="Tenant WhatsApp",
@@ -22,6 +27,7 @@ def _create_tenant(db: Session, *, instance_name: str = "instance-test") -> Tena
         trial_ends_at=now + timedelta(days=30),
         timezone_identifier="America/Bogota",
         whatsapp_instance_id=instance_name,
+        whatsapp_apikey=apikey,
     )
     db.add(tenant)
     db.commit()
@@ -74,11 +80,25 @@ def _create_appointment(
 def test_webhook_uses_sender_when_remotejid_is_lid(test_client, db: Session, monkeypatch):
     sent_messages: list[dict] = []
 
-    async def _fake_send_text(self, *, instance_name: str, phone: str, text: str):
-        sent_messages.append({"instance_name": instance_name, "phone": phone, "text": text})
+    async def _fake_send_message(
+        self,
+        *,
+        tenant_instance_id: str,
+        tenant_apikey: str,
+        target_number: str,
+        text: str,
+    ):
+        sent_messages.append(
+            {
+                "instance_name": tenant_instance_id,
+                "tenant_apikey": tenant_apikey,
+                "phone": target_number,
+                "text": text,
+            }
+        )
         return {"key": "msg-1"}
 
-    monkeypatch.setattr(EvolutionClient, "send_text", _fake_send_text)
+    monkeypatch.setattr(EvolutionClient, "send_message", _fake_send_message)
 
     tenant = _create_tenant(db, instance_name="agenda-dev-v2413")
     client = _create_client(db, tenant.id, name="Carlangas", phone="3105977000")
@@ -117,13 +137,238 @@ def test_webhook_uses_sender_when_remotejid_is_lid(test_client, db: Session, mon
     db.refresh(appointment)
     assert appointment.status == AppointmentStatus.CONFIRMED
     assert len(sent_messages) == 1
+    assert sent_messages[0]["tenant_apikey"] == tenant.whatsapp_apikey
+
+
+def test_webhook_prioritizes_senderpn_with_lid_remotejid(test_client, db: Session, monkeypatch):
+    sent_messages: list[dict] = []
+
+    async def _fake_send_message(
+        self,
+        *,
+        tenant_instance_id: str,
+        tenant_apikey: str,
+        target_number: str,
+        text: str,
+    ):
+        sent_messages.append(
+            {
+                "instance_name": tenant_instance_id,
+                "tenant_apikey": tenant_apikey,
+                "phone": target_number,
+                "text": text,
+            }
+        )
+        return {"key": "msg-senderpn-1"}
+
+    monkeypatch.setattr(EvolutionClient, "send_message", _fake_send_message)
+
+    tenant = _create_tenant(db, instance_name="instance-senderpn-priority")
+    client = _create_client(db, tenant.id, name="Cliente SenderPn", phone="3134054628")
+    service = _create_service(db, tenant.id)
+    appointment = _create_appointment(
+        db,
+        tenant_id=tenant.id,
+        client_id=client.id,
+        service_id=service.id,
+        appointment_date=(datetime.now().date() + timedelta(days=1)),
+        time_start=time(8, 0),
+        status=AppointmentStatus.PENDING,
+    )
+
+    payload = {
+        "event": "messages.upsert",
+        "instance": tenant.whatsapp_instance_id,
+        "sender": "573008862735@s.whatsapp.net",
+        "data": {
+            "sender": "573008862735@s.whatsapp.net",
+            "senderPn": "573134054628@s.whatsapp.net",
+            "key": {
+                "remoteJid": "138646644625645@lid",
+                "fromMe": False,
+                "id": "MSG-SENDERPN-123",
+            },
+            "message": {"conversation": "1"},
+        },
+    }
+
+    response = test_client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] is True
+    assert body["action"] == "appointment_confirmed"
+    assert body["appointment_id"] == str(appointment.id)
+
+    db.refresh(appointment)
+    db.refresh(client)
+    assert appointment.status == AppointmentStatus.CONFIRMED
+    assert appointment.whatsapp_remote_id == "573134054628@s.whatsapp.net"
+    assert client.whatsapp_lid == "138646644625645@lid"
+    assert len(sent_messages) == 1
+    assert sent_messages[0]["phone"] == "3134054628"
+
+
+def test_webhook_uses_participant_phone_when_sender_missing(test_client, db: Session, monkeypatch):
+    sent_messages: list[dict] = []
+
+    async def _fake_send_message(
+        self,
+        *,
+        tenant_instance_id: str,
+        tenant_apikey: str,
+        target_number: str,
+        text: str,
+    ):
+        sent_messages.append(
+            {
+                "instance_name": tenant_instance_id,
+                "tenant_apikey": tenant_apikey,
+                "phone": target_number,
+                "text": text,
+            }
+        )
+        return {"key": "msg-participant-1"}
+
+    monkeypatch.setattr(EvolutionClient, "send_message", _fake_send_message)
+
+    tenant = _create_tenant(db, instance_name="instance-participant-phone")
+    client = _create_client(db, tenant.id, name="Daniela", phone="3134054628")
+    service = _create_service(db, tenant.id)
+    appointment = _create_appointment(
+        db,
+        tenant_id=tenant.id,
+        client_id=client.id,
+        service_id=service.id,
+        appointment_date=(datetime.now().date() + timedelta(days=1)),
+        time_start=time(9, 30),
+        status=AppointmentStatus.PENDING,
+    )
+
+    payload = {
+        "event": "messages.upsert",
+        "instance": tenant.whatsapp_instance_id,
+        "data": {
+            "key": {
+                "remoteJid": "265218693328947@lid",
+                "participant": "573134054628@s.whatsapp.net",
+                "fromMe": False,
+                "id": "MSG-PARTICIPANT-123",
+            },
+            "message": {"conversation": "1"},
+        },
+    }
+
+    response = test_client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] is True
+    assert body["action"] == "appointment_confirmed"
+    assert body["appointment_id"] == str(appointment.id)
+
+    db.refresh(appointment)
+    assert appointment.status == AppointmentStatus.CONFIRMED
+    assert len(sent_messages) == 1
+    assert sent_messages[0]["phone"] == "3134054628"
+    assert sent_messages[0]["tenant_apikey"] == tenant.whatsapp_apikey
+
+
+def test_webhook_does_not_confirm_other_tenant_by_remote_jid(test_client, db: Session, monkeypatch):
+    sent_messages: list[dict] = []
+
+    async def _fake_send_message(
+        self,
+        *,
+        tenant_instance_id: str,
+        tenant_apikey: str,
+        target_number: str,
+        text: str,
+    ):
+        sent_messages.append(
+            {
+                "instance_name": tenant_instance_id,
+                "tenant_apikey": tenant_apikey,
+                "phone": target_number,
+                "text": text,
+            }
+        )
+        return {"key": "msg-multi-tenant-1"}
+
+    monkeypatch.setattr(EvolutionClient, "send_message", _fake_send_message)
+
+    tenant_a = _create_tenant(db, instance_name="instance-tenant-a", apikey="apikey-a")
+    tenant_b = _create_tenant(db, instance_name="instance-tenant-b", apikey="apikey-b")
+
+    client_a = _create_client(db, tenant_a.id, name="Cliente A", phone="3101000001")
+    client_b = _create_client(db, tenant_b.id, name="Cliente B", phone="3102000002")
+    service_a = _create_service(db, tenant_a.id)
+    service_b = _create_service(db, tenant_b.id)
+
+    appointment_a = _create_appointment(
+        db,
+        tenant_id=tenant_a.id,
+        client_id=client_a.id,
+        service_id=service_a.id,
+        appointment_date=(datetime.now().date() + timedelta(days=1)),
+        time_start=time(9, 0),
+        status=AppointmentStatus.PENDING,
+    )
+    appointment_b = _create_appointment(
+        db,
+        tenant_id=tenant_b.id,
+        client_id=client_b.id,
+        service_id=service_b.id,
+        appointment_date=(datetime.now().date() + timedelta(days=1)),
+        time_start=time(10, 0),
+        status=AppointmentStatus.PENDING,
+    )
+
+    shared_remote_jid = "shared-remote@lid"
+    appointment_a.whatsapp_remote_id = shared_remote_jid
+    appointment_b.whatsapp_remote_id = shared_remote_jid
+    db.commit()
+
+    payload = {
+        "event": "messages.upsert",
+        "instance": tenant_a.whatsapp_instance_id,
+        "sender": "573101000001@s.whatsapp.net",
+        "data": {
+            "key": {
+                "remoteJid": shared_remote_jid,
+                "fromMe": False,
+                "id": "MSG-MULTI-TENANT-1",
+            },
+            "message": {"conversation": "1"},
+        },
+    }
+
+    response = test_client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] is True
+    assert body["appointment_id"] == str(appointment_a.id)
+
+    db.refresh(appointment_a)
+    db.refresh(appointment_b)
+    assert appointment_a.status == AppointmentStatus.CONFIRMED
+    assert appointment_b.status == AppointmentStatus.PENDING
+
+    assert len(sent_messages) == 1
+    assert sent_messages[0]["instance_name"] == tenant_a.whatsapp_instance_id
+    assert sent_messages[0]["tenant_apikey"] == "apikey-a"
 
 
 def test_webhook_matches_by_remote_jid_when_phone_missing(test_client, db: Session, monkeypatch):
-    async def _fake_send_text(self, *, instance_name: str, phone: str, text: str):
+    async def _fake_send_message(
+        self,
+        *,
+        tenant_instance_id: str,
+        tenant_apikey: str,
+        target_number: str,
+        text: str,
+    ):
         return {"data": {"key": {"remoteJid": "remote-confirm-1"}}}
 
-    monkeypatch.setattr(EvolutionClient, "send_text", _fake_send_text)
+    monkeypatch.setattr(EvolutionClient, "send_message", _fake_send_message)
 
     tenant = _create_tenant(db, instance_name="instance-remote-match")
     client = _create_client(db, tenant.id, name="Valeria", phone="3158892300")
@@ -171,11 +416,72 @@ def test_webhook_matches_by_remote_jid_when_phone_missing(test_client, db: Sessi
     assert appointment.whatsapp_remote_id == remote_jid
 
 
+def test_webhook_matches_by_client_whatsapp_lid(test_client, db: Session, monkeypatch):
+    async def _fake_send_message(
+        self,
+        *,
+        tenant_instance_id: str,
+        tenant_apikey: str,
+        target_number: str,
+        text: str,
+    ):
+        return {"key": "msg-lid-match-1"}
+
+    monkeypatch.setattr(EvolutionClient, "send_message", _fake_send_message)
+
+    tenant = _create_tenant(db, instance_name="instance-lid-match")
+    client = _create_client(db, tenant.id, name="Cliente LID", phone="3158892300")
+    client.whatsapp_lid = "918273645564738@lid"
+    db.commit()
+    service = _create_service(db, tenant.id)
+    appointment = _create_appointment(
+        db,
+        tenant_id=tenant.id,
+        client_id=client.id,
+        service_id=service.id,
+        appointment_date=(datetime.now().date() + timedelta(days=1)),
+        time_start=time(11, 30),
+        status=AppointmentStatus.PENDING,
+    )
+
+    payload = {
+        "event": "messages.upsert",
+        "instance": tenant.whatsapp_instance_id,
+        "data": {
+            "key": {
+                "remoteJid": "918273645564738@lid",
+                "fromMe": False,
+                "id": "MSG-LID-MATCH-1",
+            },
+            "message": {"conversation": "1"},
+        },
+    }
+
+    response = test_client.post("/api/v1/webhooks/whatsapp", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["processed"] is True
+    assert body["status"] == "success"
+    assert body["action"] == "appointment_confirmed"
+    assert body["matched_by"] == "client_lid"
+    assert body["appointment_id"] == str(appointment.id)
+
+    db.refresh(appointment)
+    assert appointment.status == AppointmentStatus.CONFIRMED
+
+
 def test_webhook_is_idempotent_by_message_id(test_client, db: Session, monkeypatch):
-    async def _fake_send_text(self, *, instance_name: str, phone: str, text: str):
+    async def _fake_send_message(
+        self,
+        *,
+        tenant_instance_id: str,
+        tenant_apikey: str,
+        target_number: str,
+        text: str,
+    ):
         return {"key": "msg-2"}
 
-    monkeypatch.setattr(EvolutionClient, "send_text", _fake_send_text)
+    monkeypatch.setattr(EvolutionClient, "send_message", _fake_send_message)
 
     tenant = _create_tenant(db, instance_name="instance-dedupe")
     client = _create_client(db, tenant.id, name="Laura", phone="3162970154")
@@ -216,11 +522,25 @@ def test_webhook_is_idempotent_by_message_id(test_client, db: Session, monkeypat
 def test_webhook_sends_welcome_on_new_conversation_without_pending_24h(test_client, db: Session, monkeypatch):
     sent_messages: list[dict] = []
 
-    async def _fake_send_text(self, *, instance_name: str, phone: str, text: str):
-        sent_messages.append({"instance_name": instance_name, "phone": phone, "text": text})
+    async def _fake_send_message(
+        self,
+        *,
+        tenant_instance_id: str,
+        tenant_apikey: str,
+        target_number: str,
+        text: str,
+    ):
+        sent_messages.append(
+            {
+                "instance_name": tenant_instance_id,
+                "tenant_apikey": tenant_apikey,
+                "phone": target_number,
+                "text": text,
+            }
+        )
         return {"key": "msg-3"}
 
-    monkeypatch.setattr(EvolutionClient, "send_text", _fake_send_text)
+    monkeypatch.setattr(EvolutionClient, "send_message", _fake_send_message)
 
     _create_tenant(db, instance_name="instance-welcome")
 
@@ -249,7 +569,14 @@ def test_webhook_sends_welcome_on_new_conversation_without_pending_24h(test_clie
 def test_scheduler_updates_last_notification_type_for_24h_and_2h(db: Session, monkeypatch):
     calls: list[str] = []
 
-    async def _fake_send_text(self, *, instance_name: str, phone: str, text: str):
+    async def _fake_send_text(
+        self,
+        *,
+        instance_name: str,
+        phone: str,
+        text: str,
+        api_key: str | None = None,
+    ):
         calls.append(text)
         return {"key": f"msg-{len(calls)}"}
 
@@ -303,7 +630,14 @@ def test_scheduler_updates_last_notification_type_for_24h_and_2h(db: Session, mo
 def test_process_tomorrow_reminders_force_and_dry_run(db: Session, monkeypatch):
     sent_calls: list[dict] = []
 
-    async def _fake_send_text(self, *, instance_name: str, phone: str, text: str):
+    async def _fake_send_text(
+        self,
+        *,
+        instance_name: str,
+        phone: str,
+        text: str,
+        api_key: str | None = None,
+    ):
         sent_calls.append({"instance_name": instance_name, "phone": phone, "text": text})
         return {"key": {"remoteJid": "573001112233@s.whatsapp.net"}}
 
@@ -545,7 +879,14 @@ def test_scheduler_captures_remote_jid_on_24h_reminder(test_client, db: Session,
     """Test that scheduler captures and saves remoteJid from Evolution API response during 24h reminder"""
     
     # Mock Evolution API to return a response with remoteJid
-    async def mock_send_text(self, *, instance_name: str, phone: str, text: str):
+    async def mock_send_text(
+        self,
+        *,
+        instance_name: str,
+        phone: str,
+        text: str,
+        api_key: str | None = None,
+    ):
         return {
             "data": {
                 "key": {
@@ -595,7 +936,14 @@ def test_scheduler_captures_remote_jid_on_2h_reminder(test_client, db: Session, 
     """Test that scheduler captures and saves remoteJid from Evolution API response during 2h reminder"""
     
     # Mock Evolution API with different remoteJid format (@lid)
-    async def mock_send_text(self, *, instance_name: str, phone: str, text: str):
+    async def mock_send_text(
+        self,
+        *,
+        instance_name: str,
+        phone: str,
+        text: str,
+        api_key: str | None = None,
+    ):
         return {
             "data": {
                 "key": {
@@ -643,10 +991,17 @@ def test_scheduler_captures_remote_jid_on_2h_reminder(test_client, db: Session, 
 def test_webhook_matches_appointment_by_remote_jid_priority(test_client, db: Session, monkeypatch):
     """Test that webhook prioritizes remote_jid matching over phone number matching"""
     
-    async def mock_send_text(self, *, instance_name: str, phone: str, text: str):
+    async def mock_send_message(
+        self,
+        *,
+        tenant_instance_id: str,
+        tenant_apikey: str,
+        target_number: str,
+        text: str,
+    ):
         return {"data": {"key": {"remoteJid": "response-confirm-jid"}}}
     
-    monkeypatch.setattr(EvolutionClient, "send_text", mock_send_text)
+    monkeypatch.setattr(EvolutionClient, "send_message", mock_send_message)
     
     # Create tenant and client
     tenant = _create_tenant(db, instance_name="test-priority-matching")

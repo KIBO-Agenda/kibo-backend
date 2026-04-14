@@ -95,6 +95,8 @@ class WhatsAppWebhookService:
         message_id: str | None,
         sender_name: str | None = None,
         remote_jid: str | None = None,
+        sender_jid: str | None = None,
+        sender_pn_jid: str | None = None,
     ) -> dict[str, Any]:
         tenant = self.tenant_repo.get_by_whatsapp_instance_id(instance_name)
         if not tenant:
@@ -112,6 +114,24 @@ class WhatsAppWebhookService:
         normalized_text = _normalize_keyword(text)
         if not normalized_text:
             return {"processed": False, "reason": "payload_incomplete"}
+
+        resolved_reply_jid = self._resolve_reply_jid(
+            sender_pn_jid=sender_pn_jid,
+            sender_jid=sender_jid,
+            remote_jid=remote_jid,
+        )
+        remote_lid = remote_jid if remote_jid and remote_jid.endswith("@lid") else None
+
+        logger.info(
+            "[WH_IDENT] tenant=%s instance=%s sender_phone=%s sender_jid=%s sender_pn=%s remote_jid=%s reply_jid=%s",
+            tenant.id,
+            instance_name,
+            normalized_phone,
+            sender_jid,
+            sender_pn_jid,
+            remote_jid,
+            resolved_reply_jid,
+        )
 
         # Priority matching logic: first try remote_id, then fallback to phone
         match_source = "phone_number"
@@ -154,6 +174,22 @@ class WhatsAppWebhookService:
                     appointment = None
             else:
                 logger.info(f"[WH_MATCH] No se encontró cita para RemoteID: {remote_jid}")
+
+        if not appointment and remote_lid:
+            now_local = now_for_timezone(tenant.timezone_identifier)
+            appointment = self.appointment_repo.get_nearest_pending_by_client_lid(
+                tenant_id=tenant.id,
+                whatsapp_lid=remote_lid,
+                now=now_local,
+            )
+            if appointment:
+                match_source = "client_lid"
+                logger.info(
+                    "[WH_MATCH] Pending appointment resolved by client whatsapp_lid: tenant=%s appointment=%s lid=%s",
+                    tenant.id,
+                    appointment.id,
+                    remote_lid,
+                )
 
         action = "none"
         if normalized_text in _CONFIRM:
@@ -207,6 +243,8 @@ class WhatsAppWebhookService:
                 sender_phone_variants=incoming_phone_variants,
                 remote_matched_appointment=appointment,
                 remote_jid=remote_jid,
+                reply_jid=resolved_reply_jid,
+                remote_lid=remote_lid,
             )
             if message_id:
                 self.processed_webhook_repo.register(
@@ -226,6 +264,8 @@ class WhatsAppWebhookService:
                 sender_phone_variants=incoming_phone_variants,
                 remote_matched_appointment=appointment,
                 remote_jid=remote_jid,
+                reply_jid=resolved_reply_jid,
+                remote_lid=remote_lid,
             )
             if message_id:
                 self.processed_webhook_repo.register(
@@ -245,6 +285,8 @@ class WhatsAppWebhookService:
                 sender_phone_variants=incoming_phone_variants,
                 remote_matched_appointment=appointment,
                 remote_jid=remote_jid,
+                reply_jid=resolved_reply_jid,
+                remote_lid=remote_lid,
             )
             if message_id:
                 self.processed_webhook_repo.register(
@@ -286,9 +328,10 @@ class WhatsAppWebhookService:
     @staticmethod
     def _is_owner_phone(owner_phone: str | None, incoming_phone: str) -> bool:
         owner_digits = _normalize_digits(owner_phone)
-        if not owner_digits:
+        incoming_digits = _normalize_digits(incoming_phone)
+        if not owner_digits or not incoming_digits:
             return False
-        return incoming_phone.endswith(owner_digits) or owner_digits.endswith(incoming_phone)
+        return incoming_digits.endswith(owner_digits) or owner_digits.endswith(incoming_digits)
 
     async def _handle_appointment_confirmation(
         self,
@@ -299,6 +342,8 @@ class WhatsAppWebhookService:
         sender_phone_variants: set[str] | None = None,
         remote_matched_appointment=None,
         remote_jid: str | None = None,
+        reply_jid: str | None = None,
+        remote_lid: str | None = None,
     ) -> dict[str, Any]:
         tenant = self.tenant_repo.get_by_id(tenant_id)
         if not tenant:
@@ -323,6 +368,18 @@ class WhatsAppWebhookService:
                     appointment.id,
                     sender_name,
                 )
+        if not appointment and sender_phone_variants:
+            appointment = self.appointment_repo.get_nearest_pending_by_conversation_context_phone(
+                tenant_id=tenant_id,
+                sender_phone_variants=sender_phone_variants,
+                now=now_local,
+            )
+            if appointment:
+                logger.info(
+                    "[WH_MATCH] Pending appointment resolved by conversation_context: tenant=%s appointment=%s",
+                    tenant_id,
+                    appointment.id,
+                )
         if not appointment:
             logger.info(
                 "[WH_MATCH] Pending appointment not found: tenant=%s phone=%s remote_jid=%s",
@@ -332,7 +389,7 @@ class WhatsAppWebhookService:
             )
             return {"processed": False, "reason": "pending_appointment_not_found"}
 
-        phone_to_reply = self._resolve_reply_phone(
+        phone_to_reply = sender_phone or self._resolve_reply_phone(
             tenant_id=tenant_id,
             appointment=appointment,
             sender_phone=sender_phone,
@@ -344,7 +401,13 @@ class WhatsAppWebhookService:
             appointment.id,
             status=AppointmentStatus.CONFIRMED,
             last_notification_type="none",
-            whatsapp_remote_id=remote_jid or appointment.whatsapp_remote_id,
+            whatsapp_remote_id=reply_jid or remote_jid or appointment.whatsapp_remote_id,
+        )
+
+        self._persist_client_lid_if_available(
+            tenant_id=tenant_id,
+            appointment=appointment,
+            remote_lid=remote_lid,
         )
 
         # Send personalized confirmation message
@@ -352,6 +415,7 @@ class WhatsAppWebhookService:
 
         await self._safe_send_text(
             instance_name=tenant.whatsapp_instance_id,
+            tenant_apikey=tenant.whatsapp_apikey,
             phone=phone_to_reply,
             text=confirmation_message,
         )
@@ -359,6 +423,11 @@ class WhatsAppWebhookService:
             "[WH_OUT] Confirmation sent: tenant=%s appointment=%s phone=%s",
             tenant_id,
             appointment.id,
+            phone_to_reply,
+        )
+        logger.info(
+            "[WH] Respuesta enviada desde Instancia: %s hacia Cliente: %s.",
+            tenant.whatsapp_instance_id,
             phone_to_reply,
         )
         return {
@@ -377,6 +446,8 @@ class WhatsAppWebhookService:
         sender_phone_variants: set[str] | None = None,
         remote_matched_appointment=None,
         remote_jid: str | None = None,
+        reply_jid: str | None = None,
+        remote_lid: str | None = None,
     ) -> dict[str, Any]:
         tenant = self.tenant_repo.get_by_id(tenant_id)
         if not tenant:
@@ -394,6 +465,12 @@ class WhatsAppWebhookService:
                 client_name=sender_name,
                 now=now_local,
             )
+        if not appointment and sender_phone_variants:
+            appointment = self.appointment_repo.get_nearest_pending_by_conversation_context_phone(
+                tenant_id=tenant_id,
+                sender_phone_variants=sender_phone_variants,
+                now=now_local,
+            )
         if not appointment:
             return {"processed": False, "reason": "pending_appointment_not_found"}
 
@@ -409,11 +486,18 @@ class WhatsAppWebhookService:
             appointment.id,
             status=AppointmentStatus.CANCELLED,
             last_notification_type="none",
-            whatsapp_remote_id=remote_jid or appointment.whatsapp_remote_id,
+            whatsapp_remote_id=reply_jid or remote_jid or appointment.whatsapp_remote_id,
+        )
+
+        self._persist_client_lid_if_available(
+            tenant_id=tenant_id,
+            appointment=appointment,
+            remote_lid=remote_lid,
         )
 
         await self._safe_send_text(
             instance_name=tenant.whatsapp_instance_id,
+            tenant_apikey=tenant.whatsapp_apikey,
             phone=phone_to_reply,
             text="Listo. Tu cita fue cancelada.",
         )
@@ -442,6 +526,8 @@ class WhatsAppWebhookService:
         sender_phone_variants: set[str] | None = None,
         remote_matched_appointment=None,
         remote_jid: str | None = None,
+        reply_jid: str | None = None,
+        remote_lid: str | None = None,
     ) -> dict[str, Any]:
         tenant = self.tenant_repo.get_by_id(tenant_id)
         if not tenant:
@@ -457,6 +543,12 @@ class WhatsAppWebhookService:
             appointment = self.appointment_repo.get_nearest_pending_by_client_name(
                 tenant_id=tenant_id,
                 client_name=sender_name,
+                now=now_local,
+            )
+        if not appointment and sender_phone_variants:
+            appointment = self.appointment_repo.get_nearest_pending_by_conversation_context_phone(
+                tenant_id=tenant_id,
+                sender_phone_variants=sender_phone_variants,
                 now=now_local,
             )
         if not appointment:
@@ -479,7 +571,13 @@ class WhatsAppWebhookService:
             appointment.id,
             status=AppointmentStatus.RESCHEDULE_REQ,
             last_notification_type="none",
-            whatsapp_remote_id=remote_jid or appointment.whatsapp_remote_id,
+            whatsapp_remote_id=reply_jid or remote_jid or appointment.whatsapp_remote_id,
+        )
+
+        self._persist_client_lid_if_available(
+            tenant_id=tenant_id,
+            appointment=appointment,
+            remote_lid=remote_lid,
         )
         service_name = related.service_name if related else "tu servicio"
         available_hours = self.variable_resolver.hours_available_today(tenant_id=tenant_id)
@@ -487,6 +585,7 @@ class WhatsAppWebhookService:
 
         await self._safe_send_text(
             instance_name=tenant.whatsapp_instance_id,
+            tenant_apikey=tenant.whatsapp_apikey,
             phone=phone_to_reply,
             text=(
                 f"Soy Kibo, el asistente de {tenant.name}. "
@@ -531,6 +630,7 @@ class WhatsAppWebhookService:
             if tenant.phone:
                 await self._safe_send_text(
                     instance_name=tenant.whatsapp_instance_id,
+                    tenant_apikey=tenant.whatsapp_apikey,
                     phone=tenant.phone,
                     text=(
                         f"Hueco libre detectado. Quieres ofrecerselo a {waitlist_item.client_name}? "
@@ -558,6 +658,7 @@ class WhatsAppWebhookService:
             if tenant.phone:
                 await self._safe_send_text(
                     instance_name=tenant.whatsapp_instance_id,
+                    tenant_apikey=tenant.whatsapp_apikey,
                     phone=tenant.phone,
                     text="No hay ofertas pendientes de lista de espera.",
                 )
@@ -591,6 +692,7 @@ class WhatsAppWebhookService:
 
         await self._safe_send_text(
             instance_name=tenant.whatsapp_instance_id,
+            tenant_apikey=tenant.whatsapp_apikey,
             phone=waitlist_phone,
             text=(
                 f"Hola {waitlist_name}. Se libero un espacio. "
@@ -601,6 +703,7 @@ class WhatsAppWebhookService:
         if tenant.phone:
             await self._safe_send_text(
                 instance_name=tenant.whatsapp_instance_id,
+                tenant_apikey=tenant.whatsapp_apikey,
                 phone=tenant.phone,
                 text=f"Invitacion enviada a {waitlist_name}.",
             )
@@ -637,6 +740,7 @@ class WhatsAppWebhookService:
         ):
             await self._safe_send_text(
                 instance_name=tenant.whatsapp_instance_id,
+                tenant_apikey=tenant.whatsapp_apikey,
                 phone=sender_phone,
                 text="Ese espacio ya no esta disponible. Te avisamos cuando se libere otro.",
             )
@@ -670,12 +774,14 @@ class WhatsAppWebhookService:
         if tenant.phone:
             await self._safe_send_text(
                 instance_name=tenant.whatsapp_instance_id,
+                tenant_apikey=tenant.whatsapp_apikey,
                 phone=tenant.phone,
                 text=f"{waitlist_item.client_name} acepto el espacio y ya fue agendado.",
             )
 
         await self._safe_send_text(
             instance_name=tenant.whatsapp_instance_id,
+            tenant_apikey=tenant.whatsapp_apikey,
             phone=sender_phone,
             text="Listo. Tu cita quedo registrada. Te esperamos.",
         )
@@ -745,19 +851,32 @@ class WhatsAppWebhookService:
 
         await self._safe_send_text(
             instance_name=tenant.whatsapp_instance_id,
+            tenant_apikey=tenant.whatsapp_apikey,
             phone=sender_phone,
             text=message,
         )
 
-    async def _safe_send_text(self, *, instance_name: str | None, phone: str, text: str) -> None:
-        if not instance_name:
+    async def _safe_send_text(
+        self,
+        *,
+        instance_name: str | None,
+        tenant_apikey: str | None,
+        phone: str,
+        text: str,
+    ) -> None:
+        if not instance_name or not tenant_apikey:
+            logger.warning(
+                "WhatsApp send skipped: instance=%s has missing tenant credentials",
+                instance_name,
+            )
             return
         try:
             normalized_phone = "".join(ch for ch in phone if ch.isdigit())
             target_phone = normalized_phone or phone
-            await self.evolution_client.send_text(
-                instance_name=instance_name,
-                phone=target_phone,
+            await self.evolution_client.send_message(
+                tenant_instance_id=instance_name,
+                tenant_apikey=tenant_apikey,
+                target_number=target_phone,
                 text=text,
             )
         except EvolutionClientError as exc:
@@ -787,3 +906,47 @@ class WhatsAppWebhookService:
             return remote_digits
 
         return sender_phone
+
+    @staticmethod
+    def _resolve_reply_jid(
+        *,
+        sender_pn_jid: str | None,
+        sender_jid: str | None,
+        remote_jid: str | None,
+    ) -> str | None:
+        for candidate in (sender_pn_jid, sender_jid):
+            if isinstance(candidate, str) and candidate and not candidate.endswith("@lid"):
+                return candidate
+        if isinstance(remote_jid, str) and remote_jid and not remote_jid.endswith("@lid"):
+            return remote_jid
+        return None
+
+    def _persist_client_lid_if_available(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        appointment: Appointment,
+        remote_lid: str | None,
+    ) -> None:
+        if not remote_lid or not remote_lid.endswith("@lid"):
+            return
+
+        client = self.client_repo.get_by_id(tenant_id, appointment.client_id)
+        if not client:
+            return
+
+        current_lid = client.whatsapp_lid or ""
+        if current_lid == remote_lid:
+            return
+
+        self.client_repo.update(
+            tenant_id,
+            client.id,
+            whatsapp_lid=remote_lid,
+        )
+        logger.info(
+            "[WH_MATCH] Stored client whatsapp_lid: tenant=%s client=%s lid=%s",
+            tenant_id,
+            client.id,
+            remote_lid,
+        )

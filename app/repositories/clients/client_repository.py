@@ -85,6 +85,7 @@ class ClientRepository:
         name: str | None = None,
         phone: str | None = None,
         notes: str | None = None,
+        whatsapp_lid: str | None = None,
     ) -> Client | None:
         entity = self.get_by_id(tenant_id, client_id)
         if not entity:
@@ -96,10 +97,21 @@ class ClientRepository:
             entity.phone = phone
         if notes is not None:
             entity.notes = notes
+        if whatsapp_lid is not None:
+            entity.whatsapp_lid = whatsapp_lid
 
         self.db.commit()
         self.db.refresh(entity)
         return entity
+
+    def get_by_whatsapp_lid(self, tenant_id: uuid.UUID, whatsapp_lid: str) -> Client | None:
+        stmt = select(Client).where(
+            and_(
+                Client.tenant_id == tenant_id,
+                Client.whatsapp_lid == whatsapp_lid,
+            )
+        )
+        return self.db.execute(stmt).scalar_one_or_none()
 
     def delete(self, tenant_id: uuid.UUID, client_id: uuid.UUID) -> bool:
         entity = self.get_by_id(tenant_id, client_id)

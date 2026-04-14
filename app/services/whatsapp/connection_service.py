@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.timezone import now_bogota
 from app.models.tenant import Tenant
 from app.repositories.tenant import TenantRepository
@@ -76,9 +78,68 @@ def _extract_qr_base64(payload: dict[str, Any]) -> str | None:
 class WhatsAppConnectionService:
     def __init__(self, db: Session) -> None:
         self.db = db
+        self.settings = get_settings()
         self.tenant_repo = TenantRepository(db)
         self.session_repo = WhatsAppSessionRepository(db)
         self.evolution_client = EvolutionClient()
+
+    def _resolve_tenant_apikey(self, tenant: Tenant) -> str | None:
+        api_key = tenant.whatsapp_apikey or self.settings.EVOLUTION_API_KEY
+        if not tenant.whatsapp_apikey and self.settings.EVOLUTION_API_KEY:
+            self.tenant_repo.update(tenant.id, whatsapp_apikey=self.settings.EVOLUTION_API_KEY)
+        return api_key
+
+    def _candidate_api_keys(self, tenant: Tenant) -> list[str]:
+        candidates: list[str] = []
+        if tenant.whatsapp_apikey:
+            candidates.append(tenant.whatsapp_apikey)
+        if self.settings.EVOLUTION_API_KEY and self.settings.EVOLUTION_API_KEY not in candidates:
+            candidates.append(self.settings.EVOLUTION_API_KEY)
+        return candidates
+
+    @staticmethod
+    def _is_auth_error(exc: EvolutionClientError) -> bool:
+        message = str(exc).lower()
+        return "403" in message or "401" in message or "forbidden" in message or "unauthorized" in message
+
+    async def _execute_with_apikey_fallback(
+        self,
+        *,
+        tenant: Tenant,
+        operation: Callable[[str], Awaitable[Any]],
+    ) -> Any:
+        api_keys = self._candidate_api_keys(tenant)
+        self._ensure_apikey_or_400(api_keys[0] if api_keys else None)
+
+        last_exc: EvolutionClientError | None = None
+        for index, api_key in enumerate(api_keys):
+            try:
+                payload = await operation(api_key)
+                if tenant.whatsapp_apikey != api_key:
+                    self.tenant_repo.update(tenant.id, whatsapp_apikey=api_key)
+                return payload
+            except EvolutionClientError as exc:
+                last_exc = exc
+                has_next = index + 1 < len(api_keys)
+                if has_next and self._is_auth_error(exc):
+                    continue
+                raise
+
+        if last_exc:
+            raise last_exc
+        raise EvolutionClientError("Evolution API key resolution failed")
+
+    @staticmethod
+    def _ensure_apikey_or_400(api_key: str | None) -> str:
+        if api_key:
+            return api_key
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "WhatsApp API key is missing for this tenant. "
+                "Set tenant.whatsapp_apikey in tenant settings or configure EVOLUTION_API_KEY."
+            ),
+        )
 
     def _instance_name_for_tenant(self, tenant: Tenant) -> str:
         return tenant.whatsapp_instance_id or str(tenant.id)
@@ -89,9 +150,14 @@ class WhatsAppConnectionService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
 
         instance_name = self._instance_name_for_tenant(tenant)
-
         try:
-            payload = await self.evolution_client.create_instance(instance_name=instance_name)
+            payload = await self._execute_with_apikey_fallback(
+                tenant=tenant,
+                operation=lambda api_key: self.evolution_client.create_instance(
+                    instance_name=instance_name,
+                    api_key=api_key,
+                ),
+            )
         except EvolutionClientError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -108,7 +174,13 @@ class WhatsAppConnectionService:
 
         # Keep legacy instances and recreated instances aligned with inbound callback expectations.
         try:
-            await self.evolution_client.ensure_webhook(instance_name=instance_name)
+            await self._execute_with_apikey_fallback(
+                tenant=tenant,
+                operation=lambda api_key: self.evolution_client.ensure_webhook(
+                    instance_name=instance_name,
+                    api_key=api_key,
+                ),
+            )
         except EvolutionClientError:
             # Instance creation should still succeed even if webhook sync is temporarily unavailable.
             pass
@@ -123,9 +195,14 @@ class WhatsAppConnectionService:
         if not tenant:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
         instance_name = self._instance_name_for_tenant(tenant)
-
         try:
-            payload = await self.evolution_client.get_qr_code(instance_name=instance_name)
+            payload = await self._execute_with_apikey_fallback(
+                tenant=tenant,
+                operation=lambda api_key: self.evolution_client.get_qr_code(
+                    instance_name=instance_name,
+                    api_key=api_key,
+                ),
+            )
         except EvolutionClientError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -166,7 +243,13 @@ class WhatsAppConnectionService:
             }
 
         try:
-            payload = await self.evolution_client.get_connection_state(instance_name=instance_name)
+            payload = await self._execute_with_apikey_fallback(
+                tenant=tenant,
+                operation=lambda api_key: self.evolution_client.get_connection_state(
+                    instance_name=instance_name,
+                    api_key=api_key,
+                ),
+            )
         except EvolutionClientError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -174,7 +257,13 @@ class WhatsAppConnectionService:
             ) from exc
 
         try:
-            await self.evolution_client.ensure_webhook(instance_name=instance_name)
+            await self._execute_with_apikey_fallback(
+                tenant=tenant,
+                operation=lambda api_key: self.evolution_client.ensure_webhook(
+                    instance_name=instance_name,
+                    api_key=api_key,
+                ),
+            )
         except EvolutionClientError:
             # Do not fail status polling if webhook reconciliation is unavailable.
             pass
@@ -204,7 +293,13 @@ class WhatsAppConnectionService:
             return {"ok": True, "instance_name": None, "status": "already_disconnected"}
 
         try:
-            _ = await self.evolution_client.logout_instance(instance_name=instance_name)
+            _ = await self._execute_with_apikey_fallback(
+                tenant=tenant,
+                operation=lambda api_key: self.evolution_client.logout_instance(
+                    instance_name=instance_name,
+                    api_key=api_key,
+                ),
+            )
         except EvolutionClientError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -238,7 +333,13 @@ class WhatsAppConnectionService:
             )
 
         try:
-            await self.evolution_client.ensure_webhook(instance_name=instance_name)
+            await self._execute_with_apikey_fallback(
+                tenant=tenant,
+                operation=lambda api_key: self.evolution_client.ensure_webhook(
+                    instance_name=instance_name,
+                    api_key=api_key,
+                ),
+            )
         except EvolutionClientError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

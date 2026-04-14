@@ -64,6 +64,7 @@ def update_client(
         name=payload.name,
         phone=payload.phone,
         notes=payload.notes,
+        whatsapp_lid=payload.whatsapp_lid,
     )
     return ClientResponse.model_validate(entity)
 

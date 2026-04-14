@@ -44,6 +44,7 @@ class TenantRepository:
         *,
         name: str,
         phone: str | None,
+        whatsapp_apikey: str | None = None,
         slot_duration: int = 15,
         max_users: int = 5,
         plan_tier: PlanTier = PlanTier.STARTER,
@@ -58,6 +59,7 @@ class TenantRepository:
         tenant = Tenant(
             name=name,
             phone=phone,
+            whatsapp_apikey=whatsapp_apikey,
             plan_tier=plan_tier,
             slot_duration=slot_duration,
             max_users=max_users_for_plan(plan_tier),
@@ -105,6 +107,7 @@ class TenantRepository:
         *,
         name: str | None = None,
         phone: str | None = None,
+        whatsapp_apikey: str | None = None,
         slot_duration: int | None = None,
         max_users: int | None = None,
         plan_tier: PlanTier | None = None,
@@ -121,6 +124,8 @@ class TenantRepository:
             tenant.name = name
         if phone is not None:
             tenant.phone = phone
+        if whatsapp_apikey is not None:
+            tenant.whatsapp_apikey = whatsapp_apikey
         if slot_duration is not None:
             tenant.slot_duration = slot_duration
         if plan_tier is not None:
