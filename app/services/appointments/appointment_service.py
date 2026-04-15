@@ -4,6 +4,7 @@ from datetime import date, datetime, time, timedelta
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.timezone import now_for_timezone, today_for_timezone
 from app.models.appointments import AppointmentStatus
 from app.models.auth import User, UserRole
 from app.repositories.appointments import AppointmentRepository
@@ -88,7 +89,7 @@ class AppointmentService:
 
     @staticmethod
     def _calculate_end_time(time_start: time, duration_minutes: int) -> time:
-        start_dt = datetime.combine(date.today(), time_start)
+        start_dt = datetime.combine(date(2000, 1, 1), time_start)
         end_dt = start_dt + timedelta(minutes=duration_minutes)
         return end_dt.time()
 
@@ -210,6 +211,12 @@ class AppointmentService:
 
         slot_minutes = max(int(tenant.slot_duration), 1)
         slot_delta = timedelta(minutes=slot_minutes)
+        tenant_timezone = getattr(tenant, "timezone_identifier", None)
+        now_local = now_for_timezone(tenant_timezone)
+        today_local = today_for_timezone(tenant_timezone)
+        now_local_naive = now_local.replace(tzinfo=None)
+
+        # Use local-naive datetimes in this routine to avoid mixed aware/naive comparisons.
         open_dt = datetime.combine(target_date, open_time)
         close_dt = datetime.combine(target_date, close_time)
 
@@ -219,10 +226,8 @@ class AppointmentService:
             appointment_date=target_date,
         )
 
-        # Only filter past slots if the target date is today.
-        today = date.today()
-        now = datetime.now()
-        filter_past_slots = target_date == today
+        # Only filter past slots if the target date is today in tenant local time.
+        filter_past_slots = target_date == today_local
 
         free_slots: list[str] = []
         cursor = open_dt
@@ -238,7 +243,7 @@ class AppointmentService:
 
             if not has_conflict:
                 # Exclude past slots only if the date is today
-                if filter_past_slots and cursor < now:
+                if filter_past_slots and cursor < now_local_naive:
                     cursor += slot_delta
                     continue
                 free_slots.append(cursor.strftime("%H:%M"))

@@ -18,7 +18,7 @@ from app.core.security import (
 from app.models.auth import User
 from app.models.auth import UserRole
 from app.models.super_admin import SuperAdmin
-from app.models.tenant import SubscriptionStatus, Tenant
+from app.models.tenant import PlanTier, SubscriptionStatus, Tenant, max_users_for_plan
 from app.repositories.auth import AuthRepository
 from app.repositories.super_admin import SuperAdminRepository
 from app.repositories.tenant import TenantRepository
@@ -54,6 +54,8 @@ class AuthService:
             subscription_status=SubscriptionStatus.ACTIVE,
             subscription_valid_until=trial_ends_at,
             trial_ends_at=trial_ends_at,
+            plan_tier=PlanTier.PRO,
+            max_users=max_users_for_plan(PlanTier.PRO),
         )
 
         user: User | None = None
@@ -105,6 +107,7 @@ class AuthService:
             "email": user.email,
             "full_name": user.name,
             "business_name": tenant.name,
+            "plan_tier": tenant.plan_tier,
             "trial_ends_at": tenant.trial_ends_at,
         }
 
@@ -121,13 +124,15 @@ class AuthService:
             "name": current_user.name,
             "role": current_user.role,
             "tenant_id": current_user.tenant_id,
+            "plan_tier": tenant.plan_tier,
             "tenant": {
                 "name": tenant.name,
                 "slot_duration": tenant.slot_duration,
+                "plan_tier": tenant.plan_tier,
             },
         }
 
-    def login_user(self, *, email: str, password: str) -> tuple[User, str, str]:
+    def login_user(self, *, email: str, password: str) -> tuple[User, str, str, str]:
         user = self.auth_repository.get_user_by_email(email=email)
         if not user or not verify_password(password, user.password_hash):
             raise HTTPException(
@@ -140,13 +145,21 @@ class AuthService:
                 detail="User is inactive",
             )
 
+        tenant = self.tenant_repository.get_by_id(user.tenant_id)
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found",
+            )
+
         payload = {
             "sub": str(user.id),
             "tenant_id": str(user.tenant_id),
             "role": user.role.value,
+            "plan_tier": tenant.plan_tier.value,
             "scope": "tenant_user",
         }
-        return user, create_access_token(payload), create_refresh_token(payload)
+        return user, create_access_token(payload), create_refresh_token(payload), tenant.plan_tier.value
 
     def login_super_admin(self, *, email: str, password: str) -> tuple[SuperAdmin, str, str]:
         normalized_email = email.strip().lower()

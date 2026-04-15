@@ -8,23 +8,38 @@ from sqlalchemy.orm import Session
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.auth import User, UserRole
+from app.models.tenant import PlanTier
 from app.repositories.tenant import PaymentRepository, TenantRepository
 
 
-def _ensure_tenant_trial_or_payment(db: Session, tenant_id: uuid.UUID) -> None:
+PLAN_RANK: dict[PlanTier, int] = {
+    PlanTier.STARTER: 1,
+    PlanTier.PRO: 2,
+    PlanTier.BUSINESS: 3,
+}
+
+
+def has_min_plan_tier(current_tier: PlanTier, required_tier: PlanTier) -> bool:
+    return PLAN_RANK[current_tier] >= PLAN_RANK[required_tier]
+
+
+def _ensure_tenant_trial_or_payment(db: Session, tenant_id: uuid.UUID) -> bool:
+    """Check if tenant is within trial or has an active payment.
+    
+    Returns:
+        True if tenant can access (trial active or payment exists)
+        False if tenant trial expired and no payment exists
+    """
     tenant_repo = TenantRepository(db)
     payment_repo = PaymentRepository(db)
 
     tenant = tenant_repo.get_by_id(tenant_id)
     if not tenant:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Tenant not found",
-        )
+        return False
 
     trial_ends_at = getattr(tenant, "trial_ends_at", None)
     if not trial_ends_at:
-        return
+        return True
 
     now = datetime.now(timezone.utc)
     trial_reference = (
@@ -33,15 +48,12 @@ def _ensure_tenant_trial_or_payment(db: Session, tenant_id: uuid.UUID) -> None:
         else trial_ends_at.replace(tzinfo=timezone.utc)
     )
     if now < trial_reference:
-        return
+        return True
 
     if payment_repo.has_any_by_tenant(tenant_id):
-        return
+        return True
 
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Tu periodo de prueba ha terminado. Contacta a soporte o realiza un pago",
-    )
+    return False
 
 
 def get_tenant_id_from_token(
@@ -152,7 +164,12 @@ def get_current_tenant_user(
             detail="User not found or inactive",
         )
 
-    _ensure_tenant_trial_or_payment(db, tenant_id)
+    # Check trial/payment status and require plan selection if trial expired
+    if not _ensure_tenant_trial_or_payment(db, tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="TRIAL_EXPIRED_PLAN_REQUIRED",
+        )
     return user
 
 
@@ -160,7 +177,7 @@ def check_tenant_active(
     current_user: Annotated[User, Depends(get_current_tenant_user)],
     db: Session = Depends(get_db),
 ) -> User:
-    _ensure_tenant_trial_or_payment(db, current_user.tenant_id)
+    # Trial check is already done in get_current_tenant_user dependency
     return current_user
 
 
@@ -174,3 +191,42 @@ def require_owner(
             detail="Owner role required",
         )
     return current_user
+
+
+def check_plan_permission(required_tier: PlanTier):
+    def _dependency(
+        current_user: Annotated[User, Depends(get_current_tenant_user)],
+        db: Annotated[Session, Depends(get_db)],
+    ) -> User:
+        tenant_repo = TenantRepository(db)
+        tenant = tenant_repo.get_by_id(current_user.tenant_id)
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found",
+            )
+
+        if has_min_plan_tier(tenant.plan_tier, required_tier):
+            return current_user
+
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"This feature is available in the {required_tier.value} plan. "
+                "Please upgrade to continue."
+            ),
+        )
+
+    return _dependency
+
+
+def ensure_multi_location_permission(plan_tier: PlanTier, requested_locations: int) -> None:
+    if requested_locations <= 1:
+        return
+    if has_min_plan_tier(plan_tier, PlanTier.BUSINESS):
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        detail="This feature is available in the business plan. Please upgrade to continue.",
+    )

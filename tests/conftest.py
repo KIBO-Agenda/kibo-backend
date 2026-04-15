@@ -4,6 +4,7 @@ Uses in-memory SQLite to avoid PostgreSQL dependency.
 """
 
 import uuid
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Generator
 
@@ -27,6 +28,7 @@ def set_sqlite_pragma(dbapi_conn, connection_record):
     cursor.close()
 
 # Import all model modules so Base metadata includes every table.
+os.environ.setdefault("WHATSAPP_DB_SCHEMA", "")
 import app.models  # noqa: F401
 
 # Now import Base and initialize schema

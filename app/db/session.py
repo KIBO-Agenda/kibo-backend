@@ -11,6 +11,11 @@ engine = create_engine(settings.DATABASE_URL, future=True, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, class_=Session)
 
 
+def get_db_sessionmaker() -> sessionmaker:
+    """Return session factory for non-request background jobs."""
+    return SessionLocal
+
+
 def get_db() -> Generator[Session, None, None]:
     """FastAPI dependency that yields a SQLAlchemy session."""
     db = SessionLocal()

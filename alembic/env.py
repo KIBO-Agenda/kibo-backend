@@ -13,8 +13,22 @@ from app.models.tenant import Tenant, TenantPayment
 from app.models.clients import Client
 from app.models.services import Service
 from app.models.appointments import Appointment
+from app.models.conversation_contexts import ConversationContext
+from app.models.whatsapp_sessions import WhatsAppSession
+from app.models.whatsapp_outbox import WhatsAppOutbox
 
-_ = (User, SuperAdmin, Tenant, TenantPayment, Client, Service, Appointment)
+_ = (
+    User,
+    SuperAdmin,
+    Tenant,
+    TenantPayment,
+    Client,
+    Service,
+    Appointment,
+    ConversationContext,
+    WhatsAppSession,
+    WhatsAppOutbox,
+)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -56,6 +70,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_schemas=True,
     )
 
     with context.begin_transaction():
@@ -80,7 +95,9 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            include_schemas=True,
         )
 
         with context.begin_transaction():

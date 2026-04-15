@@ -1,13 +1,32 @@
 import uuid
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
+import re
 
 from sqlalchemy import and_, case, func, select, update
 from sqlalchemy.orm import Session
 
+from app.core.timezone import now_for_timezone
 from app.models.appointments import Appointment, AppointmentStatus
 from app.models.auth import User
 from app.models.clients import Client
+from app.models.conversation_contexts import ConversationContext
 from app.models.services import Service
+from app.models.tenant import Tenant
+
+
+def _normalize_digits(value: str | None) -> str:
+    return "".join(ch for ch in (value or "") if ch.isdigit())
+
+
+def _phone_variants(digits: str) -> set[str]:
+    variants = {digits}
+    if digits.startswith("57") and len(digits) > 10:
+        variants.add(digits[2:])
+    if len(digits) > 10:
+        variants.add(digits[-10:])
+    if len(digits) == 10 and digits.startswith("3"):
+        variants.add(f"57{digits}")
+    return {variant for variant in variants if variant}
 
 
 class AppointmentRepository:
@@ -123,6 +142,8 @@ class AppointmentRepository:
         time_start: time | None = None,
         time_end: time | None = None,
         status: AppointmentStatus | None = None,
+        last_notification_type: str | None = None,
+        whatsapp_remote_id: str | None = None,
         notes: str | None = None,
     ) -> Appointment | None:
         entity = self.get_by_id(tenant_id, appointment_id)
@@ -143,9 +164,28 @@ class AppointmentRepository:
             entity.time_end = time_end
         if status is not None:
             entity.status = status
+        if last_notification_type is not None:
+            entity.last_notification_type = last_notification_type
+        if whatsapp_remote_id is not None:
+            entity.whatsapp_remote_id = whatsapp_remote_id
         if notes is not None:
             entity.notes = notes
 
+        self.db.commit()
+        self.db.refresh(entity)
+        return entity
+
+    def update_whatsapp_remote_id(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        appointment_id: uuid.UUID,
+        whatsapp_remote_id: str,
+    ) -> Appointment | None:
+        entity = self.get_by_id(tenant_id, appointment_id)
+        if not entity:
+            return None
+        entity.whatsapp_remote_id = whatsapp_remote_id
         self.db.commit()
         self.db.refresh(entity)
         return entity
@@ -366,7 +406,10 @@ class AppointmentRepository:
         
         Returns the number of appointments updated.
         """
-        now = datetime.now()
+        tenant_timezone = self.db.execute(
+            select(Tenant.timezone_identifier).where(Tenant.id == tenant_id)
+        ).scalar_one_or_none()
+        now = now_for_timezone(tenant_timezone)
         today = now.date()
         current_time = now.time()
         
@@ -381,7 +424,7 @@ class AppointmentRepository:
             .values(status=AppointmentStatus.ATTENDED)
         )
         result_past_days = self.db.execute(stmt_past_days)
-        
+
         # Update confirmed appointments from today that have already ended
         stmt_today = (
             update(Appointment)
@@ -396,6 +439,339 @@ class AppointmentRepository:
         result_today = self.db.execute(stmt_today)
         
         self.db.commit()
-        
-        total_updated = result_past_days.rowcount + result_today.rowcount
+
+        past_count = result_past_days.rowcount if hasattr(result_past_days, "rowcount") else 0
+        today_count = result_today.rowcount if hasattr(result_today, "rowcount") else 0
+        total_updated = past_count + today_count
         return total_updated
+
+    def get_nearest_pending_by_client_phone(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        phone: str,
+        now: datetime,
+    ) -> Appointment | None:
+        """Return nearest pending appointment for a sender phone."""
+        sender_digits = _normalize_digits(phone)
+        if not sender_digits:
+            return None
+
+        sender_variants = _phone_variants(sender_digits)
+
+        def _is_same_phone(client_phone: str | None) -> bool:
+            client_digits = _normalize_digits(client_phone)
+            if not client_digits:
+                return False
+            client_variants = _phone_variants(client_digits)
+            return bool(sender_variants & client_variants)
+
+        base_stmt = (
+            select(Appointment, Client.phone.label("client_phone"))
+            .join(
+                Client,
+                and_(
+                    Client.id == Appointment.client_id,
+                    Client.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.PENDING,
+            )
+        )
+
+        upcoming_rows = self.db.execute(
+            base_stmt
+            .where(
+                (Appointment.appointment_date > now.date())
+                | (
+                    (Appointment.appointment_date == now.date())
+                    & (Appointment.time_start >= now.time())
+                )
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+            .limit(300)
+        ).all()
+
+        for appointment, client_phone in upcoming_rows:
+            if _is_same_phone(client_phone):
+                return appointment
+
+        recent_rows = self.db.execute(
+            base_stmt
+            .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
+            .limit(300)
+        ).all()
+
+        for appointment, client_phone in recent_rows:
+            if _is_same_phone(client_phone):
+                return appointment
+
+        return None
+
+    def get_nearest_pending_by_client_name(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        client_name: str,
+        now: datetime,
+    ) -> Appointment | None:
+        normalized = " ".join(
+            token for token in re.split(r"\s+", (client_name or "").strip().lower()) if len(token) >= 3
+        )
+        if not normalized:
+            return None
+
+        tokens = normalized.split(" ")
+        base_stmt = (
+            select(Appointment)
+            .join(
+                Client,
+                and_(
+                    Client.id == Appointment.client_id,
+                    Client.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.PENDING,
+            )
+        )
+
+        for token in tokens:
+            base_stmt = base_stmt.where(func.lower(Client.name).like(f"%{token}%"))
+
+        upcoming = self.db.execute(
+            base_stmt
+            .where(
+                (Appointment.appointment_date > now.date())
+                | (
+                    (Appointment.appointment_date == now.date())
+                    & (Appointment.time_start >= now.time())
+                )
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+            .limit(1)
+        ).scalars().first()
+        if upcoming:
+            return upcoming
+
+        recent = self.db.execute(
+            base_stmt
+            .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
+            .limit(1)
+        ).scalars().first()
+        return recent
+
+    def has_pending_in_next_hours_by_client_phone(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        phone: str,
+        now: datetime,
+        hours: int,
+    ) -> bool:
+        sender_digits = _normalize_digits(phone)
+        if not sender_digits:
+            return False
+
+        sender_variants = _phone_variants(sender_digits)
+
+        now_naive = now.replace(tzinfo=None)
+        end_window = now_naive + timedelta(hours=hours)
+
+        rows = self.db.execute(
+            select(Appointment, Client.phone.label("client_phone"))
+            .join(
+                Client,
+                and_(
+                    Client.id == Appointment.client_id,
+                    Client.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.PENDING,
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+            .limit(200)
+        ).all()
+
+        for appointment, client_phone in rows:
+            client_digits = _normalize_digits(client_phone)
+            if not client_digits:
+                continue
+            client_variants = _phone_variants(client_digits)
+            if not (sender_variants & client_variants):
+                continue
+
+            appt_dt = datetime.combine(appointment.appointment_date, appointment.time_start)
+            if now_naive <= appt_dt <= end_window:
+                return True
+
+        return False
+
+    def get_nearest_pending_by_remote_id(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        remote_id: str,
+        now: datetime,
+    ) -> Appointment | None:
+        stmt = (
+            select(Appointment)
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.PENDING,
+                Appointment.whatsapp_remote_id == remote_id,
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+            .limit(50)
+        )
+        upcoming = self.db.execute(
+            stmt.where(
+                (Appointment.appointment_date > now.date())
+                | (
+                    (Appointment.appointment_date == now.date())
+                    & (Appointment.time_start >= now.time())
+                )
+            )
+        ).scalars().first()
+        if upcoming:
+            return upcoming
+
+        recent = self.db.execute(
+            stmt
+            .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
+            .limit(50)
+        ).scalars().first()
+        return recent
+
+    def get_nearest_pending_by_client_lid(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        whatsapp_lid: str,
+        now: datetime,
+    ) -> Appointment | None:
+        if not whatsapp_lid:
+            return None
+
+        base_stmt = (
+            select(Appointment)
+            .join(
+                Client,
+                and_(
+                    Client.id == Appointment.client_id,
+                    Client.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.PENDING,
+                Client.whatsapp_lid == whatsapp_lid,
+            )
+        )
+
+        upcoming = self.db.execute(
+            base_stmt
+            .where(
+                (Appointment.appointment_date > now.date())
+                | (
+                    (Appointment.appointment_date == now.date())
+                    & (Appointment.time_start >= now.time())
+                )
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+            .limit(1)
+        ).scalars().first()
+        if upcoming:
+            return upcoming
+
+        return self.db.execute(
+            base_stmt
+            .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
+            .limit(1)
+        ).scalars().first()
+
+    def get_nearest_pending_by_conversation_context_phone(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        sender_phone_variants: set[str],
+        now: datetime,
+    ) -> Appointment | None:
+        if not sender_phone_variants:
+            return None
+
+        rows = self.db.execute(
+            select(Appointment, ConversationContext.client_phone)
+            .join(
+                ConversationContext,
+                and_(
+                    ConversationContext.appointment_id == Appointment.id,
+                    ConversationContext.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.status == AppointmentStatus.PENDING,
+                ConversationContext.expires_at > now,
+            )
+            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+            .limit(200)
+        ).all()
+
+        for appointment, context_phone in rows:
+            context_digits = _normalize_digits(context_phone)
+            if not context_digits:
+                continue
+            context_variants = _phone_variants(context_digits)
+            if sender_phone_variants & context_variants:
+                return appointment
+
+        return None
+
+    def get_by_id_with_relations(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        appointment_id: uuid.UUID,
+    ):
+        stmt = (
+            select(
+                Appointment,
+                Client.name.label("client_name"),
+                Client.phone.label("client_phone"),
+                Service.name.label("service_name"),
+                User.name.label("staff_name"),
+            )
+            .join(
+                Client,
+                and_(
+                    Client.id == Appointment.client_id,
+                    Client.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .join(
+                Service,
+                and_(
+                    Service.id == Appointment.service_id,
+                    Service.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .join(
+                User,
+                and_(
+                    User.id == Appointment.user_id,
+                    User.tenant_id == Appointment.tenant_id,
+                ),
+            )
+            .where(
+                Appointment.tenant_id == tenant_id,
+                Appointment.id == appointment_id,
+            )
+            .limit(1)
+        )
+        return self.db.execute(stmt).first()

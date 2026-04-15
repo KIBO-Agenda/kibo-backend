@@ -1,3 +1,6 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,10 +13,41 @@ from app.api.v1.clients.router import router as clients_router
 from app.api.v1.services.router import router as services_router
 from app.api.v1.appointments.router import router as appointments_router
 from app.api.v1.waitlists.router import router as waitlists_router
+from app.api.v1.whatsapp.router import router as whatsapp_router
+from app.api.v1.test import router as test_router
 from app.core.config import get_settings
+from app.services.whatsapp.worker import run_outbox_worker
+from app.services.scheduler.worker import run_scheduler_lifecycle
 
 settings = get_settings()
-app = FastAPI(title=settings.APP_NAME)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    worker_stop_event: asyncio.Event | None = None
+    worker_task: asyncio.Task | None = None
+    scheduler_stop_event: asyncio.Event | None = None
+    scheduler_task: asyncio.Task | None = None
+
+    if settings.WHATSAPP_WORKER_ENABLED:
+        worker_stop_event = asyncio.Event()
+        worker_task = asyncio.create_task(run_outbox_worker(worker_stop_event))
+
+    scheduler_stop_event = asyncio.Event()
+    scheduler_task = asyncio.create_task(run_scheduler_lifecycle(scheduler_stop_event))
+
+    yield
+
+    if worker_task and worker_stop_event:
+        worker_stop_event.set()
+        await worker_task
+
+    if scheduler_task and scheduler_stop_event:
+        scheduler_stop_event.set()
+        await scheduler_task
+
+
+app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,6 +66,8 @@ app.include_router(clients_router, prefix=settings.API_V1_PREFIX)
 app.include_router(services_router, prefix=settings.API_V1_PREFIX)
 app.include_router(appointments_router, prefix=settings.API_V1_PREFIX)
 app.include_router(waitlists_router, prefix=settings.API_V1_PREFIX)
+app.include_router(whatsapp_router, prefix=settings.API_V1_PREFIX)
+app.include_router(test_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/health", tags=["health"])

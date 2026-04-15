@@ -14,6 +14,7 @@ class ClientUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     phone: str | None = Field(default=None, min_length=4, max_length=30)
     notes: str | None = None
+    whatsapp_lid: str | None = Field(default=None, max_length=255)
 
 
 class ClientResponse(BaseModel):
@@ -21,6 +22,7 @@ class ClientResponse(BaseModel):
     tenant_id: uuid.UUID
     name: str
     phone: str | None
+    whatsapp_lid: str | None
     notes: str | None
     created_at: datetime
 

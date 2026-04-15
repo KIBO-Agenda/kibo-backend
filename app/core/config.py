@@ -26,9 +26,21 @@ class Settings:
 
     APP_NAME: str = getenv("APP_NAME", "Agenda Backend")
     API_V1_PREFIX: str = getenv("API_V1_PREFIX", "/api/v1")
+    BACKEND_BASE_URL: str = getenv("BACKEND_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
     DATABASE_URL: str = getenv(
         "DATABASE_URL",
         "postgresql+psycopg://postgres:root@localhost:5432/agenda",
+    )
+    DEFAULT_TIMEZONE: str = getenv("DEFAULT_TIMEZONE", "America/Bogota")
+    WHATSAPP_WORKER_ENABLED: bool = getenv("WHATSAPP_WORKER_ENABLED", "false").lower() == "true"
+    WHATSAPP_WORKER_POLL_SECONDS: int = int(getenv("WHATSAPP_WORKER_POLL_SECONDS", "10"))
+    WHATSAPP_WORKER_JITTER_MIN_SECONDS: int = int(getenv("WHATSAPP_WORKER_JITTER_MIN_SECONDS", "5"))
+    WHATSAPP_WORKER_JITTER_MAX_SECONDS: int = int(getenv("WHATSAPP_WORKER_JITTER_MAX_SECONDS", "15"))
+    EVOLUTION_API_BASE_URL: str | None = getenv("EVOLUTION_API_BASE_URL") or getenv("WHATSAPP_API_URL")
+    EVOLUTION_API_KEY: str | None = getenv("EVOLUTION_API_KEY") or getenv("WHATSAPP_API_KEY")
+    EVOLUTION_WEBHOOK_URL: str = getenv(
+        "EVOLUTION_WEBHOOK_URL",
+        f"{BACKEND_BASE_URL}{API_V1_PREFIX}/webhooks/whatsapp",
     )
     DEBUG: bool = getenv("DEBUG", "false").lower() == "true"
     JWT_SECRET_KEY: str = getenv("JWT_SECRET_KEY", "change-this-secret")

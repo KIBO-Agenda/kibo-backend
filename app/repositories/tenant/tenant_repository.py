@@ -4,7 +4,13 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.models.tenant.tenant import Tenant, default_business_hours
+from app.models.tenant.tenant import (
+    PlanTier,
+    Tenant,
+    default_business_hours,
+    default_message_templates,
+    max_users_for_plan,
+)
 
 
 class TenantRepository:
@@ -25,15 +31,27 @@ class TenantRepository:
                 normalized[day] = value
         return normalized
 
+    @staticmethod
+    def _normalize_message_templates(message_templates: dict | None) -> dict | None:
+        if message_templates is None:
+            return None
+        if hasattr(message_templates, "model_dump"):
+            return message_templates.model_dump()
+        return message_templates
+
     def create(
         self,
         *,
         name: str,
         phone: str | None,
+        whatsapp_apikey: str | None = None,
         slot_duration: int = 15,
         max_users: int = 5,
+        plan_tier: PlanTier = PlanTier.STARTER,
+        timezone_identifier: str = "America/Bogota",
         trial_days: int = 30,
         business_hours: dict | None = None,
+        message_templates: dict | None = None,
     ) -> Tenant:
         """Create new tenant with initial subscription and trial period."""
         now = datetime.now(timezone.utc)
@@ -41,9 +59,13 @@ class TenantRepository:
         tenant = Tenant(
             name=name,
             phone=phone,
+            whatsapp_apikey=whatsapp_apikey,
+            plan_tier=plan_tier,
             slot_duration=slot_duration,
-            max_users=max_users,
+            max_users=max_users_for_plan(plan_tier),
+            timezone_identifier=timezone_identifier,
             business_hours=self._normalize_business_hours(business_hours) or default_business_hours(),
+            message_templates=self._normalize_message_templates(message_templates) or default_message_templates(),
             subscription_valid_until=trial_ends_at,
             trial_ends_at=trial_ends_at,
         )
@@ -57,6 +79,23 @@ class TenantRepository:
         stmt = select(Tenant).where(Tenant.id == tenant_id)
         return self.db.execute(stmt).scalar_one_or_none()
 
+    def get_by_whatsapp_instance_id(self, instance_name: str) -> Tenant | None:
+        stmt = select(Tenant).where(Tenant.whatsapp_instance_id == instance_name)
+        return self.db.execute(stmt).scalar_one_or_none()
+
+    def set_whatsapp_instance_id(
+        self,
+        tenant_id: uuid.UUID,
+        instance_name: str | None,
+    ) -> Tenant | None:
+        tenant = self.get_by_id(tenant_id)
+        if not tenant:
+            return None
+        tenant.whatsapp_instance_id = instance_name
+        self.db.commit()
+        self.db.refresh(tenant)
+        return tenant
+
     def list_all(self) -> list[Tenant]:
         """List all tenants (admin/super_admin only)."""
         stmt = select(Tenant).order_by(Tenant.created_at.desc())
@@ -68,9 +107,13 @@ class TenantRepository:
         *,
         name: str | None = None,
         phone: str | None = None,
+        whatsapp_apikey: str | None = None,
         slot_duration: int | None = None,
         max_users: int | None = None,
+        plan_tier: PlanTier | None = None,
+        timezone_identifier: str | None = None,
         business_hours: dict | None = None,
+        message_templates: dict | None = None,
     ) -> Tenant | None:
         """Update tenant fields selectively."""
         tenant = self.get_by_id(tenant_id)
@@ -81,12 +124,21 @@ class TenantRepository:
             tenant.name = name
         if phone is not None:
             tenant.phone = phone
+        if whatsapp_apikey is not None:
+            tenant.whatsapp_apikey = whatsapp_apikey
         if slot_duration is not None:
             tenant.slot_duration = slot_duration
+        if plan_tier is not None:
+            tenant.plan_tier = plan_tier
         if max_users is not None:
             tenant.max_users = max_users
+        tenant.max_users = max_users_for_plan(tenant.plan_tier)
+        if timezone_identifier is not None:
+            tenant.timezone_identifier = timezone_identifier
         if business_hours is not None:
             tenant.business_hours = self._normalize_business_hours(business_hours)
+        if message_templates is not None:
+            tenant.message_templates = self._normalize_message_templates(message_templates)
 
         self.db.commit()
         self.db.refresh(tenant)

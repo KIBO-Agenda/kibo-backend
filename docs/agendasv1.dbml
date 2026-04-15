@@ -20,6 +20,20 @@ Enum subscription_status {
   suspended // Acceso bloqueado (HTTP 402)
 }
 
+Enum plan_tier {
+  starter
+  pro
+  business
+}
+
+Enum whatsapp_outbox_status {
+  pending
+  processing
+  sent
+  failed
+  blocked_opt_out
+}
+
 // ==========================================
 // TABLAS CORE (KISS & Multi-tenant)
 // ==========================================
@@ -28,12 +42,19 @@ Table tenants {
   id uuid [pk, default: `gen_random_uuid()`]
   name varchar [not null]
   phone varchar
+  plan_tier plan_tier [not null, default: 'starter']
+  timezone_identifier varchar [not null, default: 'America/Bogota', note: 'Timezone IANA del negocio (bugfix UTC vs UTC-5)']
+  whatsapp_instance_id varchar [note: 'Nombre/ID de instancia en Evolution API']
   subscription_status subscription_status [default: 'active']
-  subscription_valid_until timestamp [note: 'Fecha para calcular vencimiento y periodo de gracia']
+  subscription_valid_until timestamp [note: 'timestamptz. Fecha para calcular vencimiento y periodo de gracia']
+  trial_ends_at timestamp [note: 'timestamptz. Fin del periodo de prueba']
   slot_duration int [default: 15, note: 'Duración base de la grilla en minutos (ej. 15, 30). Vital para renderizar el frontend.']
-  created_at timestamp [default: `now()`]
+  max_users int [not null, default: 2, note: 'Se fuerza por plan_tier: starter=2, pro=6, business=99']
+  business_hours jsonb [not null, note: 'Horario semanal por día {is_open, open, close}']
+  message_templates jsonb [not null, note: 'Plantillas WhatsApp por tipo con {enabled, variants[]}']
+  created_at timestamp [default: `now()`, note: 'timestamptz']
   
-  Note: 'Representa al Negocio/SaaS Customer. Centraliza configuraciones para evitar tablas 1:1 innecesarias.'
+  Note: 'Representa al Negocio/SaaS Customer. Centraliza configuraciones para evitar tablas 1:1 innecesarias y controla feature gating por plan.'
 }
 
 Table users {
@@ -44,7 +65,7 @@ Table users {
   password_hash varchar [not null]
   role user_role [default: 'staff']
   is_active boolean [default: true]
-  created_at timestamp [default: `now()`]
+  created_at timestamp [default: `now()`, note: 'timestamptz']
 
   Indexes {
     tenant_id [name: 'idx_users_tenant']
@@ -57,9 +78,11 @@ Table clients {
   id uuid [pk, default: `gen_random_uuid()`]
   tenant_id uuid [not null, ref: > tenants.id]
   name varchar [not null]
-  phone varchar [not null]
+  phone varchar [note: 'Puede ser null en clientes creados sin teléfono']
   notes text [note: 'Historial rápido o preferencias del cliente']
-  created_at timestamp [default: `now()`]
+  whatsapp_opt_out boolean [not null, default: false, note: 'Bloquea envíos automáticos de WhatsApp']
+  whatsapp_opt_out_at timestamp [note: 'timestamptz. Fecha de opt-out por keyword (STOP/NO/BAJA)']
+  created_at timestamp [default: `now()`, note: 'timestamptz']
 
   Indexes {
     tenant_id [name: 'idx_clients_tenant']
@@ -77,6 +100,8 @@ Table services {
   price decimal [not null, default: 0]
   is_active boolean [default: true]
 
+  created_at timestamp [default: `now()`, note: 'timestamptz']
+
   Indexes {
     tenant_id [name: 'idx_services_tenant']
   }
@@ -88,21 +113,106 @@ Table appointments {
   client_id uuid [not null, ref: > clients.id]
   user_id uuid [not null, ref: > users.id, note: 'El empleado (staff) asignado a esta cita']
   service_id uuid [not null, ref: > services.id]
+  appointment_time timestamp [note: 'timestamptz. Soporte para recordatorios y filtros por fecha/hora completa']
   appointment_date date [not null, note: 'Permite filtrar rápidamente las citas del día']
   time_start time [not null]
   time_end time [not null]
   status appointment_status [default: 'pending']
+  confirmation_status varchar [not null, default: 'pending']
+  reminder_24h_sent boolean [not null, default: false]
+  reminder_2h_sent boolean [not null, default: false]
   notes text
-  created_at timestamp [default: `now()`]
+  created_at timestamp [default: `now()`, note: 'timestamptz']
 
   Indexes {
     tenant_id [name: 'idx_appointments_tenant']
     appointment_date [name: 'idx_appointments_date']
     (tenant_id, appointment_date) [name: 'idx_appointments_tenant_date', note: 'Optimiza la consulta principal de la vista de agenda diaria']
+    (tenant_id, appointment_time) [name: 'idx_appointments_tenant_time', note: 'Optimiza jobs de recordatorios por tenant']
     (user_id, appointment_date, time_start, time_end) [name: 'idx_prevent_overlap', note: 'CRÍTICO: En PostgreSQL esto debe implementarse usando EXCLUDE USING gist (tsrange) para evitar colisiones concurrentes.']
   }
   
   Note: 'Tabla transaccional principal. El endpoint GET filtrará por tenant_id y appointment_date para devolver el resumen completo.'
+}
+
+Table waitlists {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  client_name varchar [not null]
+  client_phone varchar
+  target_date date [not null]
+  notes text
+  is_resolved boolean [not null, default: false]
+  created_at timestamp [default: `now()`, note: 'timestamptz']
+
+  Indexes {
+    tenant_id [name: 'idx_waitlists_tenant']
+    target_date [name: 'idx_waitlists_target_date']
+  }
+
+  Note: 'Lista de espera por fecha para avisar cuando se libera un cupo.'
+}
+
+Table conversation_contexts {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  client_phone varchar [not null]
+  appointment_id uuid [not null, ref: > appointments.id]
+  context_type varchar [not null, note: 'Tipo de conversación (confirmación, waitlist, etc.)']
+  context_token varchar [not null, unique]
+  created_at timestamp [default: `now()`, note: 'timestamptz']
+  expires_at timestamp [not null, note: 'timestamptz']
+
+  Indexes {
+    tenant_id [name: 'idx_conversation_contexts_tenant']
+    client_phone [name: 'idx_conversation_contexts_client_phone']
+    context_token [name: 'idx_conversation_contexts_context_token', unique]
+  }
+}
+
+Table whatsapp_sessions {
+  id uuid [pk, default: `gen_random_uuid()`]
+  tenant_id uuid [not null, ref: > tenants.id]
+  instance_name varchar [not null]
+  status varchar [not null, note: 'connected|disconnected|connecting|qr_required']
+  last_seen_at timestamp [note: 'timestamptz']
+  created_at timestamp [default: `now()`, note: 'timestamptz']
+
+  Indexes {
+    tenant_id [name: 'idx_whatsapp_sessions_tenant']
+  }
+
+  Note: 'Estado de conexión por tenant con Evolution API.'
+}
+
+Table whatsapp_outbox {
+  id uuid [pk, default: `gen_random_uuid()`]
+  business_id uuid [not null, ref: > tenants.id, note: 'business_id = tenant_id en el dominio KIBO']
+  client_id uuid [ref: > clients.id]
+  appointment_id uuid [ref: > appointments.id]
+  phone varchar [not null]
+  message_type varchar [not null, note: 'reminder_24h | reminder_2h | welcome_message | waitlist_notification']
+  template_variant_index int [note: 'Índice de variante elegida aleatoriamente']
+  rendered_text text [not null]
+  variables jsonb [not null, default: '{}']
+  provider_payload jsonb
+  provider_message_id varchar
+  status whatsapp_outbox_status [not null, default: 'pending']
+  attempts int [not null, default: 0]
+  next_attempt_at timestamp [not null, default: `now()`, note: 'timestamptz']
+  jitter_seconds int [not null, default: 0]
+  error_message text
+  idempotency_key varchar [not null, unique]
+  created_at timestamp [not null, default: `now()`, note: 'timestamptz']
+  updated_at timestamp [not null, default: `now()`, note: 'timestamptz']
+  sent_at timestamp [note: 'timestamptz']
+
+  Indexes {
+    (status, next_attempt_at) [name: 'idx_whatsapp_outbox_status_next_attempt']
+    (business_id, created_at) [name: 'idx_whatsapp_outbox_business_created']
+  }
+
+  Note: 'Cola de salida anti-ban con jitter/reintentos. Nunca enviar directo: siempre pasa por outbox.'
 }
 // ==========================================
 // ADMINISTRACIÓN SAAS (Panel SuperAdmin)
@@ -113,7 +223,7 @@ Table super_admins {
   name varchar [not null]
   email varchar [unique, not null]
   password_hash varchar [not null]
-  created_at timestamp [default: `now()`]
+  created_at timestamp [default: `now()`, note: 'timestamptz']
   
   Note: 'Este eres tú (y tu equipo). Totalmente aislado de la tabla users para que un fallo de seguridad en un tenant no comprometa todo el SaaS.'
 }
@@ -122,7 +232,7 @@ Table tenant_payments {
   id uuid [pk, default: `gen_random_uuid()`]
   tenant_id uuid [not null, ref: > tenants.id]
   amount decimal [not null, note: 'Ej. 50000 COP']
-  payment_date timestamp [default: `now()`]
+  payment_date timestamp [default: `now()`, note: 'timestamptz']
   payment_method varchar [note: 'Ej. Efectivo, Transferencia, Wompi, etc.']
   reference_code varchar [unique, note: 'Útil si a futuro integras pasarelas de pago']
   

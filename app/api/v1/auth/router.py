@@ -39,11 +39,15 @@ def login_user(
     db: Annotated[Session, Depends(get_db)],
 ):
     service = AuthService(db)
-    _, access_token, refresh_token = service.login_user(
+    _, access_token, refresh_token, plan_tier = service.login_user(
         email=payload.email,
         password=payload.password,
     )
-    return TokenPairResponse(access_token=access_token, refresh_token=refresh_token)
+    return TokenPairResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        plan_tier=plan_tier,
+    )
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
