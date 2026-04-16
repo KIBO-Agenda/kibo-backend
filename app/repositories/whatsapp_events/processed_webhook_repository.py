@@ -26,15 +26,19 @@ class ProcessedWebhookRepository:
         if not digits:
             return False
 
-        rows = self.db.execute(
-            select(ProcessedWebhook.sender_phone)
-            .where(
-                ProcessedWebhook.tenant_id == tenant_id,
-                ProcessedWebhook.processed_at >= since,
+        rows = (
+            self.db.execute(
+                select(ProcessedWebhook.sender_phone)
+                .where(
+                    ProcessedWebhook.tenant_id == tenant_id,
+                    ProcessedWebhook.processed_at >= since,
+                )
+                .order_by(ProcessedWebhook.processed_at.desc())
+                .limit(200)
             )
-            .order_by(ProcessedWebhook.processed_at.desc())
-            .limit(200)
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         for candidate in rows:
             candidate_digits = "".join(ch for ch in (candidate or "") if ch.isdigit())

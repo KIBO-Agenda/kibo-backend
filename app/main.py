@@ -4,20 +4,20 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.appointments.router import router as appointments_router
 from app.api.v1.auth.router import router as auth_router
-from app.api.v1.super_admin.router import router as super_admin_router
-from app.api.v1.tenant.router import router as tenant_router
-from app.api.v1.tenant.payments_router import router as payments_router
-from app.api.v1.users.router import router as users_router
 from app.api.v1.clients.router import router as clients_router
 from app.api.v1.services.router import router as services_router
-from app.api.v1.appointments.router import router as appointments_router
+from app.api.v1.super_admin.router import router as super_admin_router
+from app.api.v1.tenant.payments_router import router as payments_router
+from app.api.v1.tenant.router import router as tenant_router
+from app.api.v1.test import router as test_router
+from app.api.v1.users.router import router as users_router
 from app.api.v1.waitlists.router import router as waitlists_router
 from app.api.v1.whatsapp.router import router as whatsapp_router
-from app.api.v1.test import router as test_router
 from app.core.config import get_settings
-from app.services.whatsapp.worker import run_outbox_worker
 from app.services.scheduler.worker import run_scheduler_lifecycle
+from app.services.whatsapp.worker import run_outbox_worker
 
 settings = get_settings()
 

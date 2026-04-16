@@ -163,6 +163,31 @@ The script provisions:
   3. Run broader subset per module.
   4. Run `pytest` before committing.
 
+### Linting in Docker container
+If you install `black`, `isort`, and `flake8` with `docker compose exec backend pip install ...`, they are installed under the user path (`/home/appuser/.local/bin`) and may not be available directly in `PATH`.
+
+Use module execution to avoid PATH issues:
+
+```bash
+# Install tools inside backend container
+docker compose exec backend python -m pip install --user black isort flake8
+
+# Format code
+docker compose exec backend python -m black app tests
+docker compose exec backend python -m isort app tests
+
+# Check style
+docker compose exec backend python -m flake8 .
+```
+
+Check-only mode (same behavior as CI):
+
+```bash
+docker compose exec backend python -m black --check .
+docker compose exec backend python -m isort --check-only .
+docker compose exec backend python -m flake8 .
+```
+
 ## Scheduler & WhatsApp Workers
 - APScheduler reminder lifecycle (`app/services/scheduler`) runs automatically on app startup, sending 24h and 2h reminders per appointment.
 - WhatsApp outbox worker (`app/services/whatsapp/worker.py`) is toggled by `WHATSAPP_WORKER_ENABLED=true` in env vars; enable it when Evolution API credentials are valid.

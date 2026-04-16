@@ -45,15 +45,9 @@ class Settings:
     DEBUG: bool = getenv("DEBUG", "false").lower() == "true"
     JWT_SECRET_KEY: str = getenv("JWT_SECRET_KEY", "change-this-secret")
     JWT_ALGORITHM: str = getenv("JWT_ALGORITHM", "HS256")
-    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
-        getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60")
-    )
-    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = int(
-        getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7")
-    )
-    JWT_PASSWORD_RESET_EXPIRE_MINUTES: int = int(
-        getenv("JWT_PASSWORD_RESET_EXPIRE_MINUTES", "30")
-    )
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = int(getenv("JWT_REFRESH_TOKEN_EXPIRE_DAYS", "7"))
+    JWT_PASSWORD_RESET_EXPIRE_MINUTES: int = int(getenv("JWT_PASSWORD_RESET_EXPIRE_MINUTES", "30"))
     FRONTEND_URL: str = getenv("FRONTEND_URL", "http://localhost:3000")
     SMTP_HOST: str | None = getenv("SMTP_HOST")
     SMTP_PORT: int = int(getenv("SMTP_PORT", "587"))
@@ -65,6 +59,7 @@ class Settings:
         getenv("BACKEND_CORS_ORIGINS"),
         FRONTEND_URL,
     )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

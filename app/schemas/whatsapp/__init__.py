@@ -2,13 +2,13 @@ from app.schemas.whatsapp.whatsapp import (
     OutboxEnqueueRequest,
     OutboxMessageResponse,
     OutboxStatsResponse,
-    WhatsAppWebhookResponse,
+    WebhookProcessResponse,
     WhatsAppInstanceResponse,
     WhatsAppLogoutResponse,
-    WhatsAppWebhookSyncResponse,
     WhatsAppQrResponse,
     WhatsAppStatusResponse,
-    WebhookProcessResponse,
+    WhatsAppWebhookResponse,
+    WhatsAppWebhookSyncResponse,
 )
 
 __all__ = [

@@ -1,0 +1,25 @@
+[tool.black]
+line-length = 120
+target-version = ["py312"]
+include = "\\.pyi?$"
+exclude = """
+/(
+    \\.git
+  | \\.venv
+  | venv
+  | __pycache__
+  | alembic/versions
+)/
+"""
+
+[tool.isort]
+profile = "black"
+line_length = 120
+py_version = 312
+skip = ["alembic/versions", "venv", ".venv"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --cov=app --cov-report=term-missing --cov-report=xml"
+python_files = ["test_*.py"]

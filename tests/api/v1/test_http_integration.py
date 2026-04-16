@@ -1,7 +1,7 @@
 """
 HTTP integration tests for tenant/users/payments APIs.
 Tests multi-tenant enforcement, authentication, and business rules via FastAPI endpoints.
-Run with: python -m pytest tests/test_http_integration.py -v
+Run with: python -m pytest tests/api/v1/test_http_integration.py -v
 """
 
 import uuid
@@ -9,8 +9,6 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-
-from app.models.auth import UserRole
 
 
 class TestTenantHTTP:
@@ -38,7 +36,7 @@ class TestTenantHTTP:
             },
             headers={"Authorization": f"Bearer {jwt_token_super_admin}"},
         )
-        
+
         assert response.status_code == 201
         data = response.json()
         assert data["name"] == "Premium Salon"
@@ -56,13 +54,13 @@ class TestTenantHTTP:
             headers={"Authorization": f"Bearer {jwt_token_super_admin}"},
         )
         assert create_resp.status_code == 201
-        
+
         # List tenants
         list_resp = test_client.get(
             "/api/v1/tenants",
             headers={"Authorization": f"Bearer {jwt_token_super_admin}"},
         )
-        
+
         assert list_resp.status_code == 200
         data = list_resp.json()
         assert isinstance(data, list)
@@ -75,7 +73,7 @@ class TestTenantHTTP:
             f"/api/v1/tenants/{sample_tenant.id}",
             headers={"Authorization": f"Bearer {jwt_token_super_admin}"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["id"] == str(sample_tenant.id)
@@ -91,7 +89,7 @@ class TestTenantHTTP:
             },
             headers={"Authorization": f"Bearer {jwt_token_super_admin}"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["name"] == "Updated Salon"
@@ -117,7 +115,7 @@ class TestPaymentHTTP:
             },
             headers={"Authorization": f"Bearer {jwt_token_tenant_user}"},
         )
-        
+
         assert response.status_code == 201
         data = response.json()
         assert Decimal(data["amount"]) == Decimal("50000.00")
@@ -132,7 +130,7 @@ class TestPaymentHTTP:
     ):
         """Rule: Payment extends subscription_valid_until by ~30 days."""
         old_until = sample_tenant.subscription_valid_until
-        
+
         response = test_client.post(
             "/api/v1/payments",
             json={
@@ -142,9 +140,9 @@ class TestPaymentHTTP:
             },
             headers={"Authorization": f"Bearer {jwt_token_tenant_user}"},
         )
-        
+
         assert response.status_code == 201
-        
+
         # Refresh tenant from DB
         db.refresh(sample_tenant)
         delta_days = (sample_tenant.subscription_valid_until - old_until).days
@@ -170,13 +168,13 @@ class TestPaymentHTTP:
                 },
                 headers={"Authorization": f"Bearer {jwt_token_tenant_user}"},
             )
-        
+
         # List payments (should return 2)
         response = test_client.get(
             "/api/v1/payments",
             headers={"Authorization": f"Bearer {jwt_token_tenant_user}"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 2
@@ -189,7 +187,7 @@ class TestPaymentHTTP:
     ):
         """Rule: Duplicate reference_code returns 409 Conflict."""
         ref_code = f"DUP-{uuid.uuid4().hex[:8]}"
-        
+
         # First payment
         response1 = test_client.post(
             "/api/v1/payments",
@@ -201,7 +199,7 @@ class TestPaymentHTTP:
             headers={"Authorization": f"Bearer {jwt_token_tenant_user}"},
         )
         assert response1.status_code == 201
-        
+
         # Second payment with same reference
         response2 = test_client.post(
             "/api/v1/payments",
@@ -234,7 +232,7 @@ class TestUserHTTP:
             },
             headers={"Authorization": f"Bearer {jwt_token_tenant_user}"},
         )
-        
+
         assert response.status_code == 201
         data = response.json()
         assert data["email"] == "newstaff@test.com"
@@ -251,23 +249,24 @@ class TestUserHTTP:
         """Rule: list_users shows only users in that tenant."""
         # Create 2 more users in this tenant
         for i in range(2):
-            test_client.post(
+            create_response = test_client.post(
                 "/api/v1/users",
                 json={
                     "email": f"staff{i}@test.com",
                     "name": f"Staff {i}",
-                    "password": "Pass123",
+                    "password": "Pass12345",
                     "role": "staff",
                 },
                 headers={"Authorization": f"Bearer {jwt_token_tenant_user}"},
             )
-        
+            assert create_response.status_code == 201
+
         # List users
         response = test_client.get(
             "/api/v1/users",
             headers={"Authorization": f"Bearer {jwt_token_tenant_user}"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         # Should include at least the original user + 2 new ones
@@ -285,10 +284,10 @@ class TestUserHTTP:
         # Create a different tenant with its own user
         from app.services.tenant import TenantService
         from app.services.users import UserService
-        
+
         other_service = TenantService(db)
         user_service = UserService(db)
-        
+
         other_tenant = other_service.create_tenant(name="Other", phone=None)
         other_user = user_service.create_user(
             other_tenant.id,
@@ -296,13 +295,13 @@ class TestUserHTTP:
             name="Other User",
             password="Pass123",
         )
-        
+
         # Try to get other_user from sample_tenant context
         response = test_client.get(
             f"/api/v1/users/{other_user.id}",
             headers={"Authorization": f"Bearer {jwt_token_tenant_user}"},
         )
-        
+
         # Should be 404 (user not in tenant context)
         assert response.status_code == 404
 
@@ -319,21 +318,23 @@ class TestUserHTTP:
             json={
                 "email": "temp@test.com",
                 "name": "Temporary",
-                "password": "Pass123",
+                "password": "Pass12345",
             },
             headers={"Authorization": f"Bearer {jwt_token_tenant_user}"},
         )
+        assert create_resp.status_code == 201
         user_id = create_resp.json()["id"]
-        
+
         # Delete
         delete_resp = test_client.delete(
             f"/api/v1/users/{user_id}",
             headers={"Authorization": f"Bearer {jwt_token_tenant_user}"},
         )
         assert delete_resp.status_code == 204
-        
+
         # Verify in DB it's still there but inactive
         from app.models.auth import User
+
         user = db.query(User).filter(User.id == uuid.UUID(user_id)).first()
         assert user is not None
         assert user.is_active is False
@@ -352,7 +353,7 @@ class TestUserHTTP:
             },
             headers={"Authorization": f"Bearer {jwt_token_tenant_user}"},
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["name"] == "Updated Name"
@@ -376,16 +377,23 @@ class TestAuthenticationHTTP:
 
     def test_expired_token_returns_401(self, test_client: TestClient):
         """Rule: Expired JWT returns 401."""
-        from app.core.security import create_access_token
         from datetime import datetime, timedelta, timezone
-        
-        # Create token with past expiration
-        past = datetime.now(timezone.utc) - timedelta(hours=1)
-        token = create_access_token(
-            data={"sub": str(uuid.uuid4())},
-            expires_delta=timedelta(seconds=-3600),
+
+        from jose import jwt
+
+        from app.core.config import get_settings
+
+        settings = get_settings()
+        token = jwt.encode(
+            {
+                "sub": str(uuid.uuid4()),
+                "scope": "super_admin",
+                "exp": datetime.now(timezone.utc) - timedelta(minutes=5),
+            },
+            settings.JWT_SECRET_KEY,
+            algorithm=settings.JWT_ALGORITHM,
         )
-        
+
         response = test_client.get(
             "/api/v1/tenants",
             headers={"Authorization": f"Bearer {token}"},
@@ -395,4 +403,5 @@ class TestAuthenticationHTTP:
 
 if __name__ == "__main__":
     import sys
+
     pytest.main([__file__, "-v"] + sys.argv[1:])

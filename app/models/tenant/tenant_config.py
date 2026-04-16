@@ -13,9 +13,5 @@ class TenantConfig(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
     )
-    waitlist_manual_approval: Mapped[bool] = mapped_column(
-        Boolean(), nullable=False, server_default=text("true")
-    )
-    whatsapp_enabled: Mapped[bool] = mapped_column(
-        Boolean(), nullable=False, server_default=text("true")
-    )
+    waitlist_manual_approval: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default=text("true"))
+    whatsapp_enabled: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default=text("true"))

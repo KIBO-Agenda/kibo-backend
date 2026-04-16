@@ -1,6 +1,6 @@
-from typing import Annotated
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
+from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
@@ -10,7 +10,6 @@ from app.db.session import get_db
 from app.models.auth import User, UserRole
 from app.models.tenant import PlanTier
 from app.repositories.tenant import PaymentRepository, TenantRepository
-
 
 PLAN_RANK: dict[PlanTier, int] = {
     PlanTier.STARTER: 1,
@@ -25,7 +24,7 @@ def has_min_plan_tier(current_tier: PlanTier, required_tier: PlanTier) -> bool:
 
 def _ensure_tenant_trial_or_payment(db: Session, tenant_id: uuid.UUID) -> bool:
     """Check if tenant is within trial or has an active payment.
-    
+
     Returns:
         True if tenant can access (trial active or payment exists)
         False if tenant trial expired and no payment exists
@@ -42,11 +41,7 @@ def _ensure_tenant_trial_or_payment(db: Session, tenant_id: uuid.UUID) -> bool:
         return True
 
     now = datetime.now(timezone.utc)
-    trial_reference = (
-        trial_ends_at
-        if trial_ends_at.tzinfo is not None
-        else trial_ends_at.replace(tzinfo=timezone.utc)
-    )
+    trial_reference = trial_ends_at if trial_ends_at.tzinfo is not None else trial_ends_at.replace(tzinfo=timezone.utc)
     if now < trial_reference:
         return True
 
@@ -153,11 +148,7 @@ def get_current_tenant_user(
             detail="Invalid token subject or tenant_id",
         ) from exc
 
-    user = (
-        db.query(User)
-        .filter(User.id == user_id, User.tenant_id == tenant_id, User.is_active.is_(True))
-        .first()
-    )
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id, User.is_active.is_(True)).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -211,10 +202,7 @@ def check_plan_permission(required_tier: PlanTier):
 
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=(
-                f"This feature is available in the {required_tier.value} plan. "
-                "Please upgrade to continue."
-            ),
+            detail=(f"This feature is available in the {required_tier.value} plan. " "Please upgrade to continue."),
         )
 
     return _dependency

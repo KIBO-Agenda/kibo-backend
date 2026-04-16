@@ -1,21 +1,19 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-
 from app.core.config import get_settings
 from app.db.base import Base
+from app.models.appointments import Appointment
 from app.models.auth import User
+from app.models.clients import Client
+from app.models.conversation_contexts import ConversationContext
+from app.models.services import Service
 from app.models.super_admin import SuperAdmin
 from app.models.tenant import Tenant, TenantPayment
-from app.models.clients import Client
-from app.models.services import Service
-from app.models.appointments import Appointment
-from app.models.conversation_contexts import ConversationContext
-from app.models.whatsapp_sessions import WhatsAppSession
 from app.models.whatsapp_outbox import WhatsAppOutbox
+from app.models.whatsapp_sessions import WhatsAppSession
 
 _ = (
     User,

@@ -3,8 +3,7 @@ import uuid
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
-from app.models.auth import User
-from app.models.auth import UserRole
+from app.models.auth import User, UserRole
 
 
 class UserRepository:
@@ -37,9 +36,7 @@ class UserRepository:
 
     def get_by_id(self, tenant_id: uuid.UUID, user_id: uuid.UUID) -> User | None:
         """Get user by ID with mandatory multi-tenant filter."""
-        stmt = select(User).where(
-            and_(User.tenant_id == tenant_id, User.id == user_id)
-        )
+        stmt = select(User).where(and_(User.tenant_id == tenant_id, User.id == user_id))
         return self.db.execute(stmt).scalar_one_or_none()
 
     def get_by_email(self, tenant_id: uuid.UUID, email: str) -> User | None:
@@ -55,11 +52,7 @@ class UserRepository:
 
     def list_by_tenant(self, tenant_id: uuid.UUID) -> list[User]:
         """List all users in a tenant."""
-        stmt = (
-            select(User)
-            .where(User.tenant_id == tenant_id)
-            .order_by(User.created_at.desc())
-        )
+        stmt = select(User).where(User.tenant_id == tenant_id).order_by(User.created_at.desc())
         return list(self.db.execute(stmt).scalars().all())
 
     def count_by_tenant(self, tenant_id: uuid.UUID, *, only_active: bool = True) -> int:

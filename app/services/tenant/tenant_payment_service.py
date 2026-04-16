@@ -3,9 +3,7 @@ import uuid
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.security import get_password_hash
-from app.repositories.tenant import TenantRepository, PaymentRepository
-from app.models.tenant import SubscriptionStatus
+from app.repositories.tenant import PaymentRepository, TenantRepository
 
 
 class PaymentService:

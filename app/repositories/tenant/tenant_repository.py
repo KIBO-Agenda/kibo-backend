@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.tenant.tenant import (
@@ -144,17 +144,13 @@ class TenantRepository:
         self.db.refresh(tenant)
         return tenant
 
-    def extend_subscription(
-        self, tenant_id: uuid.UUID, days: int = 30
-    ) -> Tenant | None:
+    def extend_subscription(self, tenant_id: uuid.UUID, days: int = 30) -> Tenant | None:
         """Extend subscription_valid_until by N days."""
         tenant = self.get_by_id(tenant_id)
         if not tenant:
             return None
 
-        tenant.subscription_valid_until = tenant.subscription_valid_until + timedelta(
-            days=days
-        )
+        tenant.subscription_valid_until = tenant.subscription_valid_until + timedelta(days=days)
         self.db.commit()
         self.db.refresh(tenant)
         return tenant
