@@ -1,12 +1,11 @@
-from typing import Annotated
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import check_plan_permission, has_min_plan_tier, require_owner
+from app.core.dependencies import check_plan_permission, get_super_admin_id_from_token, has_min_plan_tier, require_owner
 from app.db.session import get_db
-from app.core.dependencies import get_super_admin_id_from_token
 from app.models.auth import User
 from app.models.tenant import PlanTier
 from app.schemas.tenant import (

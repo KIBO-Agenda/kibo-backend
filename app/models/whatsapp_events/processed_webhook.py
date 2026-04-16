@@ -1,5 +1,5 @@
-from datetime import datetime
 import uuid
+from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import UUID
@@ -19,6 +19,4 @@ class ProcessedWebhook(Base):
     )
     sender_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     remote_jid: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    processed_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    processed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

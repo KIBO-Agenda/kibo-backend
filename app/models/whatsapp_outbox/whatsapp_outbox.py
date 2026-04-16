@@ -2,8 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func, text
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -24,9 +23,7 @@ class WhatsAppOutbox(Base):
         {"schema": WHATSAPP_SCHEMA},
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     business_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
@@ -47,9 +44,7 @@ class WhatsAppOutbox(Base):
     )
     provider_payload: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default=text("'pending'")
-    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'pending'"))
     attempts: Mapped[int] = mapped_column(Integer(), nullable=False, server_default=text("0"))
     next_attempt_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -57,9 +52,7 @@ class WhatsAppOutbox(Base):
     jitter_seconds: Mapped[int] = mapped_column(Integer(), nullable=False, server_default=text("0"))
     error_message: Mapped[str | None] = mapped_column(Text(), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )

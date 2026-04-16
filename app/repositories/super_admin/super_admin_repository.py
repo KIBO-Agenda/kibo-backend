@@ -1,6 +1,7 @@
+import uuid
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-import uuid
 
 from app.models.super_admin import SuperAdmin
 

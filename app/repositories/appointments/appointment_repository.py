@@ -1,6 +1,6 @@
+import re
 import uuid
 from datetime import date, datetime, time, timedelta
-import re
 
 from sqlalchemy import and_, case, func, select, update
 from sqlalchemy.orm import Session
@@ -62,9 +62,7 @@ class AppointmentRepository:
         return entity
 
     def get_by_id(self, tenant_id: uuid.UUID, appointment_id: uuid.UUID) -> Appointment | None:
-        stmt = select(Appointment).where(
-            and_(Appointment.tenant_id == tenant_id, Appointment.id == appointment_id)
-        )
+        stmt = select(Appointment).where(and_(Appointment.tenant_id == tenant_id, Appointment.id == appointment_id))
         return self.db.execute(stmt).scalar_one_or_none()
 
     def list_by_tenant(self, tenant_id: uuid.UUID, *, appointment_date: date | None = None) -> list[Appointment]:
@@ -81,9 +79,7 @@ class AppointmentRepository:
         *,
         appointment_date: date | None = None,
     ) -> list[Appointment]:
-        stmt = select(Appointment).where(
-            and_(Appointment.tenant_id == tenant_id, Appointment.user_id == user_id)
-        )
+        stmt = select(Appointment).where(and_(Appointment.tenant_id == tenant_id, Appointment.user_id == user_id))
         if appointment_date is not None:
             stmt = stmt.where(Appointment.appointment_date == appointment_date)
         stmt = stmt.order_by(Appointment.appointment_date.desc(), Appointment.time_start.asc())
@@ -208,43 +204,43 @@ class AppointmentRepository:
     ) -> dict[str, int]:
         stmt = (
             select(
-            func.count(Appointment.id).label("total"),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (Appointment.status == AppointmentStatus.CONFIRMED, 1),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label("confirmed"),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (Appointment.status == AppointmentStatus.PENDING, 1),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label("pending"),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (Appointment.status == AppointmentStatus.CANCELLED, 1),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label("cancelled"),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (Appointment.status == AppointmentStatus.ATTENDED, 1),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label("attended"),
+                func.count(Appointment.id).label("total"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (Appointment.status == AppointmentStatus.CONFIRMED, 1),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("confirmed"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (Appointment.status == AppointmentStatus.PENDING, 1),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("pending"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (Appointment.status == AppointmentStatus.CANCELLED, 1),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("cancelled"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (Appointment.status == AppointmentStatus.ATTENDED, 1),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("attended"),
             )
             .select_from(Appointment)
             .join(
@@ -284,34 +280,34 @@ class AppointmentRepository:
     ) -> dict[str, int]:
         stmt = (
             select(
-            func.count(Appointment.id).label("total"),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (Appointment.status == AppointmentStatus.CONFIRMED, 1),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label("confirmed"),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (Appointment.status == AppointmentStatus.PENDING, 1),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label("pending"),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (Appointment.status == AppointmentStatus.CANCELLED, 1),
-                        else_=0,
-                    )
-                ),
-                0,
-            ).label("cancelled"),
+                func.count(Appointment.id).label("total"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (Appointment.status == AppointmentStatus.CONFIRMED, 1),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("confirmed"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (Appointment.status == AppointmentStatus.PENDING, 1),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("pending"),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (Appointment.status == AppointmentStatus.CANCELLED, 1),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("cancelled"),
             )
             .select_from(Appointment)
             .join(
@@ -399,11 +395,11 @@ class AppointmentRepository:
     def mark_past_confirmed_as_attended(self, tenant_id: uuid.UUID) -> int:
         """
         Marks all past confirmed appointments as attended.
-        
+
         An appointment is considered past if:
         - Its appointment_date is before today, OR
         - Its appointment_date is today AND its time_end has passed
-        
+
         Returns the number of appointments updated.
         """
         tenant_timezone = self.db.execute(
@@ -412,7 +408,7 @@ class AppointmentRepository:
         now = now_for_timezone(tenant_timezone)
         today = now.date()
         current_time = now.time()
-        
+
         # Update confirmed appointments from before today
         stmt_past_days = (
             update(Appointment)
@@ -437,7 +433,7 @@ class AppointmentRepository:
             .values(status=AppointmentStatus.ATTENDED)
         )
         result_today = self.db.execute(stmt_today)
-        
+
         self.db.commit()
 
         past_count = result_past_days.rowcount if hasattr(result_past_days, "rowcount") else 0
@@ -482,13 +478,9 @@ class AppointmentRepository:
         )
 
         upcoming_rows = self.db.execute(
-            base_stmt
-            .where(
+            base_stmt.where(
                 (Appointment.appointment_date > now.date())
-                | (
-                    (Appointment.appointment_date == now.date())
-                    & (Appointment.time_start >= now.time())
-                )
+                | ((Appointment.appointment_date == now.date()) & (Appointment.time_start >= now.time()))
             )
             .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
             .limit(300)
@@ -499,9 +491,7 @@ class AppointmentRepository:
                 return appointment
 
         recent_rows = self.db.execute(
-            base_stmt
-            .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
-            .limit(300)
+            base_stmt.order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc()).limit(300)
         ).all()
 
         for appointment, client_phone in recent_rows:
@@ -542,26 +532,28 @@ class AppointmentRepository:
         for token in tokens:
             base_stmt = base_stmt.where(func.lower(Client.name).like(f"%{token}%"))
 
-        upcoming = self.db.execute(
-            base_stmt
-            .where(
-                (Appointment.appointment_date > now.date())
-                | (
-                    (Appointment.appointment_date == now.date())
-                    & (Appointment.time_start >= now.time())
+        upcoming = (
+            self.db.execute(
+                base_stmt.where(
+                    (Appointment.appointment_date > now.date())
+                    | ((Appointment.appointment_date == now.date()) & (Appointment.time_start >= now.time()))
                 )
+                .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+                .limit(1)
             )
-            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
-            .limit(1)
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if upcoming:
             return upcoming
 
-        recent = self.db.execute(
-            base_stmt
-            .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
-            .limit(1)
-        ).scalars().first()
+        recent = (
+            self.db.execute(
+                base_stmt.order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc()).limit(1)
+            )
+            .scalars()
+            .first()
+        )
         return recent
 
     def has_pending_in_next_hours_by_client_phone(
@@ -629,23 +621,24 @@ class AppointmentRepository:
             .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
             .limit(50)
         )
-        upcoming = self.db.execute(
-            stmt.where(
-                (Appointment.appointment_date > now.date())
-                | (
-                    (Appointment.appointment_date == now.date())
-                    & (Appointment.time_start >= now.time())
+        upcoming = (
+            self.db.execute(
+                stmt.where(
+                    (Appointment.appointment_date > now.date())
+                    | ((Appointment.appointment_date == now.date()) & (Appointment.time_start >= now.time()))
                 )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if upcoming:
             return upcoming
 
-        recent = self.db.execute(
-            stmt
-            .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
-            .limit(50)
-        ).scalars().first()
+        recent = (
+            self.db.execute(stmt.order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc()).limit(50))
+            .scalars()
+            .first()
+        )
         return recent
 
     def get_nearest_pending_by_client_lid(
@@ -674,26 +667,28 @@ class AppointmentRepository:
             )
         )
 
-        upcoming = self.db.execute(
-            base_stmt
-            .where(
-                (Appointment.appointment_date > now.date())
-                | (
-                    (Appointment.appointment_date == now.date())
-                    & (Appointment.time_start >= now.time())
+        upcoming = (
+            self.db.execute(
+                base_stmt.where(
+                    (Appointment.appointment_date > now.date())
+                    | ((Appointment.appointment_date == now.date()) & (Appointment.time_start >= now.time()))
                 )
+                .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
+                .limit(1)
             )
-            .order_by(Appointment.appointment_date.asc(), Appointment.time_start.asc())
-            .limit(1)
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         if upcoming:
             return upcoming
 
-        return self.db.execute(
-            base_stmt
-            .order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc())
-            .limit(1)
-        ).scalars().first()
+        return (
+            self.db.execute(
+                base_stmt.order_by(Appointment.appointment_date.desc(), Appointment.time_start.desc()).limit(1)
+            )
+            .scalars()
+            .first()
+        )
 
     def get_nearest_pending_by_conversation_context_phone(
         self,

@@ -1,11 +1,12 @@
-from typing import Annotated
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
 from app.core.dependencies import get_tenant_id_from_token, require_owner
+from app.db.session import get_db
+from app.models.auth import User
 from app.schemas.users import (
     UserActivationResponse,
     UserCreate,
@@ -14,7 +15,6 @@ from app.schemas.users import (
     UserUpdate,
 )
 from app.services.users import UserService
-from app.models.auth import User
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -72,7 +72,7 @@ def get_user(
 ):
     """Get user details (multi-tenant enforced)."""
     tenant_id = uuid.UUID(tenant_id_str)
-    
+
     service = UserService(db)
     user = service.get_user(tenant_id, user_id)
     return UserResponse.model_validate(user)
@@ -85,7 +85,7 @@ def list_users(
 ):
     """List users in tenant."""
     tenant_id = uuid.UUID(tenant_id_str)
-    
+
     service = UserService(db)
     users = service.list_users(tenant_id)
     return [UserResponse.model_validate(u) for u in users]
@@ -100,7 +100,7 @@ def update_user(
 ):
     """Update user (multi-tenant enforced)."""
     tenant_id = uuid.UUID(tenant_id_str)
-    
+
     service = UserService(db)
     user = service.update_user(
         tenant_id,
@@ -120,6 +120,6 @@ def delete_user(
 ):
     """Delete (soft) user (multi-tenant enforced)."""
     tenant_id = uuid.UUID(tenant_id_str)
-    
+
     service = UserService(db)
     service.delete_user(tenant_id, user_id)

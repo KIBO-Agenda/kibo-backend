@@ -150,16 +150,20 @@ class WhatsAppOutboxRepository:
         if not digits:
             return False
 
-        rows = self.db.execute(
-            select(WhatsAppOutbox.phone)
-            .where(
-                WhatsAppOutbox.business_id == business_id,
-                WhatsAppOutbox.message_type == message_type,
-                WhatsAppOutbox.created_at >= since,
+        rows = (
+            self.db.execute(
+                select(WhatsAppOutbox.phone)
+                .where(
+                    WhatsAppOutbox.business_id == business_id,
+                    WhatsAppOutbox.message_type == message_type,
+                    WhatsAppOutbox.created_at >= since,
+                )
+                .order_by(WhatsAppOutbox.created_at.desc())
+                .limit(200)
             )
-            .order_by(WhatsAppOutbox.created_at.desc())
-            .limit(200)
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         for candidate in rows:
             candidate_digits = "".join(ch for ch in (candidate or "") if ch.isdigit())

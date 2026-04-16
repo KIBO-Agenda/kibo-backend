@@ -34,7 +34,7 @@ class TestMaxUsersRules:
         tenant_service = TenantService(db)
         user_service = UserService(db)
 
-        tenant = tenant_service.create_tenant(name="Plan Test", phone=None, max_users=1)
+        tenant = tenant_service.create_tenant(name="Plan Test", phone=None)
 
         # Owner should not consume specialist quota.
         user_service.create_user(
@@ -52,11 +52,18 @@ class TestMaxUsersRules:
             password="SecurePass123",
         )
 
+        user_service.create_staff_user(
+            tenant.id,
+            email="staff-2@test.com",
+            name="Staff 2",
+            password="SecurePass123",
+        )
+
         with pytest.raises(Exception) as exc_info:
             user_service.create_staff_user(
                 tenant.id,
-                email="staff-2@test.com",
-                name="Staff 2",
+                email="staff-3@test.com",
+                name="Staff 3",
                 password="SecurePass123",
             )
 
@@ -66,7 +73,7 @@ class TestMaxUsersRules:
         tenant_service = TenantService(db)
         user_service = UserService(db)
 
-        tenant = tenant_service.create_tenant(name="Activation Plan", phone=None, max_users=1)
+        tenant = tenant_service.create_tenant(name="Activation Plan", phone=None)
 
         user_service.create_user(
             tenant.id,
@@ -79,6 +86,13 @@ class TestMaxUsersRules:
             tenant.id,
             email="active-staff@test.com",
             name="Active Staff",
+            password="SecurePass123",
+            role=UserRole.STAFF,
+        )
+        user_service.create_user(
+            tenant.id,
+            email="active-staff-2@test.com",
+            name="Active Staff 2",
             password="SecurePass123",
             role=UserRole.STAFF,
         )
@@ -104,7 +118,7 @@ class TestActivationAndAgendaIntegration:
         tenant_service = TenantService(db)
         user_service = UserService(db)
 
-        tenant = tenant_service.create_tenant(name="Tenant Settings", phone="5551002000", max_users=7)
+        tenant = tenant_service.create_tenant(name="Tenant Settings", phone="5551002000")
         owner = user_service.create_user(
             tenant.id,
             email="owner-settings@test.com",
@@ -124,7 +138,7 @@ class TestActivationAndAgendaIntegration:
         assert data["name"] == "Tenant Settings"
         assert data["phone"] == "5551002000"
         assert data["slot_duration"] == 15
-        assert data["max_users"] == 7
+        assert data["max_users"] == 2
         assert data["subscription_status"] in {"active", "past_due", "suspended"}
         assert set(data["business_hours"].keys()) == {
             "monday",
@@ -173,7 +187,7 @@ class TestActivationAndAgendaIntegration:
     def test_activate_staff_endpoint_rejects_when_plan_exceeded(self, test_client: TestClient, db):
         tenant_service = TenantService(db)
         user_service = UserService(db)
-        tenant = tenant_service.create_tenant(name="Tenant B", phone=None, max_users=1)
+        tenant = tenant_service.create_tenant(name="Tenant B", phone=None)
 
         owner = user_service.create_user(
             tenant.id,
@@ -186,6 +200,13 @@ class TestActivationAndAgendaIntegration:
             tenant.id,
             email="staff-b-active@test.com",
             name="Staff B Active",
+            password="SecurePass123",
+            role=UserRole.STAFF,
+        )
+        user_service.create_user(
+            tenant.id,
+            email="staff-b-active-2@test.com",
+            name="Staff B Active 2",
             password="SecurePass123",
             role=UserRole.STAFF,
         )

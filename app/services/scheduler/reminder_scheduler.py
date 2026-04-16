@@ -1,7 +1,7 @@
 import logging
+import uuid
 from collections.abc import Mapping
 from datetime import datetime, timedelta
-import uuid
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -147,12 +147,16 @@ class ReminderScheduler:
             cutoff_time = tz_now + timedelta(hours=2)
 
             today = tz_now.date()
-            appointments = db.query(Appointment).filter(
-                Appointment.tenant_id == tenant.id,
-                Appointment.appointment_date == today,
-                Appointment.status == AppointmentStatus.PENDING,
-                Appointment.reminder_2h_sent.is_(False),
-            ).all()
+            appointments = (
+                db.query(Appointment)
+                .filter(
+                    Appointment.tenant_id == tenant.id,
+                    Appointment.appointment_date == today,
+                    Appointment.status == AppointmentStatus.PENDING,
+                    Appointment.reminder_2h_sent.is_(False),
+                )
+                .all()
+            )
 
             for appointment in appointments:
                 appointment_datetime = self._appointment_datetime_for_tenant(
@@ -232,7 +236,8 @@ class ReminderScheduler:
             else:
                 message = (
                     f"Hola {client_name}, soy Kibo. Tu cita para {service_name} en {tenant.name} "
-                    f"es hoy a las {appointment_time_str}. Responde 1 para confirmar, 2 para cancelar o 3 para reagendar."
+                    f"es hoy a las {appointment_time_str}. "
+                    "Responde 1 para confirmar, 2 para cancelar o 3 para reagendar."
                 )
 
         phone = client_phone

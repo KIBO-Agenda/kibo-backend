@@ -1,11 +1,11 @@
-from typing import Annotated
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
 from app.core.dependencies import get_tenant_id_from_token
+from app.db.session import get_db
 from app.schemas.tenant import PaymentCreate, PaymentResponse
 from app.services.tenant import PaymentService
 
@@ -20,7 +20,7 @@ def register_payment(
 ):
     """Register payment for tenant (owner only)."""
     tenant_id = uuid.UUID(tenant_id_str)
-    
+
     service = PaymentService(db)
     payment = service.register_payment(
         tenant_id,
@@ -38,7 +38,7 @@ def list_payments(
 ):
     """List payments for tenant (multi-tenant enforced)."""
     tenant_id = uuid.UUID(tenant_id_str)
-    
+
     service = PaymentService(db)
     payments = service.list_tenant_payments(tenant_id)
     return [PaymentResponse.model_validate(p) for p in payments]

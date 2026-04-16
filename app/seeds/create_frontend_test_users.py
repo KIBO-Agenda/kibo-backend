@@ -4,24 +4,23 @@ Run:
     /venv/bin/python app/seeds/create_frontend_test_users.py
 """
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Ensure project root is importable when running this file directly.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from datetime import datetime, timezone
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone  # noqa: E402
 
-from sqlalchemy import func
+from sqlalchemy import func  # noqa: E402
 
-from app.core.security import get_password_hash
-from app.db.session import SessionLocal
-from app.models.auth import User, UserRole
-from app.models.super_admin import SuperAdmin
-from app.models.tenant import Tenant, SubscriptionStatus
+from app.core.security import get_password_hash  # noqa: E402
+from app.db.session import SessionLocal  # noqa: E402
+from app.models.auth import User, UserRole  # noqa: E402
+from app.models.super_admin import SuperAdmin  # noqa: E402
+from app.models.tenant import SubscriptionStatus, Tenant  # noqa: E402
 
 
 def ensure_super_admin(db):

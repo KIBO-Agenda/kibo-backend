@@ -1,7 +1,7 @@
-import re
-from typing import Annotated, Any
-import uuid
 import logging
+import re
+import uuid
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy.orm import Session
@@ -12,13 +12,13 @@ from app.models.auth import User
 from app.models.tenant import PlanTier
 from app.schemas.whatsapp import (
     OutboxEnqueueRequest,
-    OutboxStatsResponse,
     OutboxMessageResponse,
+    OutboxStatsResponse,
+    WebhookProcessResponse,
     WhatsAppInstanceResponse,
     WhatsAppLogoutResponse,
     WhatsAppQrResponse,
     WhatsAppStatusResponse,
-    WebhookProcessResponse,
     WhatsAppWebhookResponse,
     WhatsAppWebhookSyncResponse,
 )
@@ -59,7 +59,7 @@ def _extract_instance_name(payload: dict[str, Any]) -> str | None:
 def _extract_phone(payload: dict[str, Any]) -> str | None:
     """
     Extract phone number from WhatsApp webhook payload.
-    
+
     Note: This function specifically extracts PHONE numbers, not remoteJid.
     remoteJid can be @lid format which is not a phone number.
     """
@@ -197,9 +197,11 @@ def _extract_text(payload: dict[str, Any]) -> str | None:
         data.get("body"),
         message_data.get("conversation"),
         message_data.get("text"),
-        message_data.get("extendedTextMessage", {}).get("text")
-        if isinstance(message_data.get("extendedTextMessage"), dict)
-        else None,
+        (
+            message_data.get("extendedTextMessage", {}).get("text")
+            if isinstance(message_data.get("extendedTextMessage"), dict)
+            else None
+        ),
     ]
 
     for candidate in candidates:
@@ -274,7 +276,7 @@ def _extract_message_type(payload: dict[str, Any]) -> str | None:
         return "documentMessage"
     elif "stickerMessage" in message_data:
         return "stickerMessage"
-    
+
     return None
 
 
@@ -497,7 +499,7 @@ async def whatsapp_webhook(
             processed=False,
             reason="missing_fields",
         )
-    
+
     # Require at least phone OR remote_jid for matching
     if not phone and not remote_jid:
         return WhatsAppWebhookResponse(
@@ -525,6 +527,7 @@ async def whatsapp_webhook(
         logger.error(f"[WH_ERROR] Exception in webhook processing: {str(e)}")
         logger.error(f"[WH_ERROR] Exception type: {type(e).__name__}")
         import traceback
+
         logger.error(f"[WH_ERROR] Traceback: {traceback.format_exc()}")
         return WhatsAppWebhookResponse(
             event=event,

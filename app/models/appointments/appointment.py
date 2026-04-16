@@ -33,16 +33,12 @@ class Appointment(Base):
         ),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     client_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     service_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    appointment_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    appointment_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     appointment_date: Mapped[date] = mapped_column(Date(), nullable=False)
     time_start: Mapped[time] = mapped_column(Time(), nullable=False)
     time_end: Mapped[time] = mapped_column(Time(), nullable=False)
@@ -57,19 +53,9 @@ class Appointment(Base):
         default=AppointmentStatus.PENDING,
     )
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    confirmation_status: Mapped[str] = mapped_column(
-        String(30), nullable=False, server_default=text("'pending'")
-    )
-    reminder_24h_sent: Mapped[bool] = mapped_column(
-        Boolean(), nullable=False, server_default=text("false")
-    )
-    reminder_2h_sent: Mapped[bool] = mapped_column(
-        Boolean(), nullable=False, server_default=text("false")
-    )
-    last_notification_type: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default=text("'none'")
-    )
+    confirmation_status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'pending'"))
+    reminder_24h_sent: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default=text("false"))
+    reminder_2h_sent: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default=text("false"))
+    last_notification_type: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'none'"))
     whatsapp_remote_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -16,8 +16,8 @@ from app.repositories.tenant import TenantConfigRepository, TenantRepository
 from app.repositories.waitlists import WaitlistRepository
 from app.repositories.whatsapp_events import ProcessedWebhookRepository
 from app.repositories.whatsapp_outbox import WhatsAppOutboxRepository
-from app.services.whatsapp.template_engine import TemplateEngineError, select_variant
 from app.services.whatsapp.evolution_client import EvolutionClient, EvolutionClientError
+from app.services.whatsapp.template_engine import TemplateEngineError, select_variant
 from app.services.whatsapp.variable_resolver import WhatsAppVariableResolver
 
 logger = logging.getLogger(__name__)
@@ -146,7 +146,7 @@ class WhatsAppWebhookService:
         # Priority matching logic: first try remote_id, then fallback to phone
         match_source = "phone_number"
         appointment = None
-        
+
         if remote_jid:
             logger.info(f"[WH_MATCH] Buscando cita por RemoteID: {remote_jid} para tenant {tenant.id}")
             now_local = now_for_timezone(tenant.timezone_identifier)
@@ -155,7 +155,7 @@ class WhatsAppWebhookService:
                 remote_id=remote_jid,
                 now=now_local,
             )
-            
+
             if appointment:
                 # Verify the appointment has a valid client
                 if appointment.client_id:
@@ -178,8 +178,7 @@ class WhatsAppWebhookService:
                         appointment = None
                 else:
                     logger.warning(
-                        f"[WH_MATCH] RemoteID encontrado pero cita sin cliente: "
-                        f"appointment_id={appointment.id}"
+                        f"[WH_MATCH] RemoteID encontrado pero cita sin cliente: " f"appointment_id={appointment.id}"
                     )
                     appointment = None
             else:
@@ -414,7 +413,10 @@ class WhatsAppWebhookService:
                 sender_phone_variants=sender_phone_variants,
             ):
                 logger.warning(
-                    "[WH_MATCH] Ambiguous pending appointment, confirmation skipped: tenant=%s match_by=%s phone=%s sender_name=%s",
+                    (
+                        "[WH_MATCH] Ambiguous pending appointment, confirmation skipped: "
+                        "tenant=%s match_by=%s phone=%s sender_name=%s"
+                    ),
                     tenant_id,
                     matched_by,
                     sender_phone,
@@ -658,7 +660,9 @@ class WhatsAppWebhookService:
 
         manual_approval = bool(tenant_config.waitlist_manual_approval)
         if manual_approval:
-            note_payload = f"KIBO_PENDING_OFFER|appointment_id={appointment_id}|target_phone={waitlist_item.client_phone}"
+            note_payload = (
+                f"KIBO_PENDING_OFFER|appointment_id={appointment_id}|target_phone={waitlist_item.client_phone}"
+            )
             self.waitlist_repo.update_notes(tenant_id, waitlist_item.id, note_payload)
             if tenant.phone:
                 await self._safe_send_text(
@@ -727,10 +731,7 @@ class WhatsAppWebhookService:
             instance_name=tenant.whatsapp_instance_id,
             tenant_apikey=tenant.whatsapp_apikey or self.settings.EVOLUTION_API_KEY,
             phone=waitlist_phone,
-            text=(
-                f"Hola {waitlist_name}. Se libero un espacio. "
-                "Quieres tomarlo? Responde 1 para agendar."
-            ),
+            text=(f"Hola {waitlist_name}. Se libero un espacio. " "Quieres tomarlo? Responde 1 para agendar."),
         )
 
         if tenant.phone:

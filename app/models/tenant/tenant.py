@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, Enum as SAEnum, String, func
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import DateTime
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import String, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -50,13 +51,20 @@ def default_message_templates() -> dict[str, object]:
         "reminder_24h": {
             "enabled": True,
             "variants": [
-                "Hola {nombre}, soy Kibo, el asistente de {negocio}. Te recuerdo tu cita para {servicio} manana a las {hora}. Responde: 1 para Confirmar, 2 para Cancelar o 3 para Reagendar.",
+                (
+                    "Hola {nombre}, soy Kibo, el asistente de {negocio}. Te recuerdo tu cita "
+                    "para {servicio} manana a las {hora}. Responde: 1 para Confirmar, "
+                    "2 para Cancelar o 3 para Reagendar."
+                ),
             ],
         },
         "reminder_2h": {
             "enabled": True,
             "variants": [
-                "Hola {nombre}, soy Kibo. Tu cita para {servicio} es hoy a las {hora}. Responde 1 para Confirmar, 2 para Cancelar o 3 para Reagendar.",
+                (
+                    "Hola {nombre}, soy Kibo. Tu cita para {servicio} es hoy a las {hora}. "
+                    "Responde 1 para Confirmar, 2 para Cancelar o 3 para Reagendar."
+                ),
             ],
         },
         "welcome_message": {
@@ -78,9 +86,7 @@ def default_message_templates() -> dict[str, object]:
 class Tenant(Base):
     __tablename__ = "tenants"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     plan_tier: Mapped[PlanTier] = mapped_column(
@@ -94,15 +100,9 @@ class Tenant(Base):
         default=PlanTier.STARTER,
         server_default=PlanTier.STARTER.value,
     )
-    timezone_identifier: Mapped[str] = mapped_column(
-        String(64), nullable=False, server_default="America/Bogota"
-    )
-    whatsapp_instance_id: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
-    whatsapp_apikey: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
+    timezone_identifier: Mapped[str] = mapped_column(String(64), nullable=False, server_default="America/Bogota")
+    whatsapp_instance_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    whatsapp_apikey: Mapped[str | None] = mapped_column(String(255), nullable=True)
     subscription_status: Mapped[SubscriptionStatus] = mapped_column(
         SAEnum(
             SubscriptionStatus,
@@ -113,15 +113,9 @@ class Tenant(Base):
         nullable=False,
         default=SubscriptionStatus.ACTIVE,
     )
-    subscription_valid_until: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    trial_ends_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    slot_duration: Mapped[int] = mapped_column(
-        nullable=False, default=15
-    )
+    subscription_valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    trial_ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    slot_duration: Mapped[int] = mapped_column(nullable=False, default=15)
     max_users: Mapped[int] = mapped_column(
         nullable=False,
         default=max_users_for_plan(PlanTier.STARTER),
@@ -136,6 +130,4 @@ class Tenant(Base):
         nullable=False,
         default=default_message_templates,
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -8,15 +8,14 @@ from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
-from app.core.timezone import now_bogota
 from app.core.dependencies import has_min_plan_tier
+from app.core.timezone import now_bogota
 from app.models.tenant import PlanTier, Tenant
 from app.repositories.clients import ClientRepository
 from app.repositories.tenant import TenantRepository
 from app.repositories.whatsapp_outbox import WhatsAppOutboxRepository
 from app.services.whatsapp.evolution_client import EvolutionClient
 from app.services.whatsapp.template_engine import resolve_variables, select_variant
-
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +47,7 @@ class WhatsAppOutboxService:
         if not tenant:
             raise ValueError("Business not found")
         if not has_min_plan_tier(tenant.plan_tier, PlanTier.PRO):
-            raise ValueError(
-                "This feature is available in the pro plan. Please upgrade to continue."
-            )
+            raise ValueError("This feature is available in the pro plan. Please upgrade to continue.")
 
         template_index, template_text = select_variant(tenant.message_templates or {}, message_type)
         rendered = resolve_variables(template_text, variables)
@@ -132,11 +129,7 @@ class WhatsAppOutboxService:
                 )
                 provider_message_id = None
                 if isinstance(payload, dict):
-                    provider_message_id = (
-                        payload.get("key")
-                        or payload.get("id")
-                        or payload.get("messageId")
-                    )
+                    provider_message_id = payload.get("key") or payload.get("id") or payload.get("messageId")
 
                 self.outbox_repo.mark_sent(
                     message_id=message.id,

@@ -65,11 +65,7 @@ class EvolutionClient:
             return response.text[:500]
 
         if isinstance(payload, Mapping):
-            detail = (
-                payload.get("message")
-                or payload.get("response")
-                or payload.get("error")
-            )
+            detail = payload.get("message") or payload.get("response") or payload.get("error")
             if detail is not None:
                 return EvolutionClient._stringify_error_detail(detail)
         return str(payload)
@@ -77,13 +73,7 @@ class EvolutionClient:
     @staticmethod
     def _is_instance_already_in_use(message: str) -> bool:
         lowered = message.lower()
-        return (
-            "already" in lowered
-            and (
-                "instance" in lowered
-                or "name" in lowered
-            )
-        ) or "already in use" in lowered
+        return ("already" in lowered and ("instance" in lowered or "name" in lowered)) or "already in use" in lowered
 
     async def create_instance(self, *, instance_name: str, api_key: str | None = None) -> dict[str, Any]:
         payload = {
@@ -106,9 +96,7 @@ class EvolutionClient:
             if self._is_instance_already_in_use(message):
                 return {"instance": {"instanceName": instance_name}, "status": "already_exists"}
 
-            raise EvolutionClientError(
-                f"Failed to create instance ({response.status_code}): {message}"
-            )
+            raise EvolutionClientError(f"Failed to create instance ({response.status_code}): {message}")
 
     async def find_webhook(self, *, instance_name: str, api_key: str | None = None) -> dict[str, Any] | None:
         async with self._get_client(api_key=api_key) as client:

@@ -1,13 +1,13 @@
-import uuid
 import logging
+import uuid
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.security import get_password_hash
 from app.models.auth import UserRole
-from app.repositories.users import UserRepository
 from app.repositories.tenant import TenantRepository
+from app.repositories.users import UserRepository
 
 
 class UserService:
