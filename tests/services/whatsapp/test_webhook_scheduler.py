@@ -3,6 +3,7 @@ from datetime import datetime, time, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from app.core.timezone import now_for_timezone
 from app.models.appointments import Appointment, AppointmentStatus
 from app.models.clients import Client
 from app.models.services import Service
@@ -894,7 +895,8 @@ def test_scheduler_captures_remote_jid_on_24h_reminder(test_client, db: Session,
     service = _create_service(db, tenant.id)
 
     # Create appointment for tomorrow (24h reminder window)
-    tomorrow = datetime.now().date() + timedelta(days=1)
+    tenant_now = now_for_timezone(tenant.timezone_identifier)
+    tomorrow = (tenant_now + timedelta(days=1)).date()
     appointment = _create_appointment(
         db,
         tenant_id=tenant.id,
@@ -946,15 +948,15 @@ def test_scheduler_captures_remote_jid_on_2h_reminder(test_client, db: Session, 
     service = _create_service(db, tenant.id)
 
     # Create appointment for today in 1.5 hours (2h reminder window)
-    now = datetime.now()
-    appointment_time = (now + timedelta(hours=1, minutes=30)).time()
+    tenant_now = now_for_timezone(tenant.timezone_identifier)
+    appointment_time = (tenant_now + timedelta(hours=1, minutes=30)).time()
 
     appointment = _create_appointment(
         db,
         tenant_id=tenant.id,
         client_id=client.id,
         service_id=service.id,
-        appointment_date=now.date(),
+        appointment_date=tenant_now.date(),
         time_start=appointment_time,
         status=AppointmentStatus.PENDING,
     )
