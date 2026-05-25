@@ -1,3 +1,4 @@
+import json
 from functools import lru_cache
 from os import getenv
 
@@ -16,6 +17,13 @@ def _parse_cors_origins(raw_origins: str | None, frontend_url: str) -> list[str]
 
     if normalized == "*":
         return ["*"]
+
+    try:
+        parsed = json.loads(normalized)
+        if isinstance(parsed, list):
+            return [str(o).strip() for o in parsed if str(o).strip()]
+    except json.JSONDecodeError:
+        pass
 
     origins = [origin.strip() for origin in normalized.split(",") if origin.strip()]
     return origins or [frontend_url]
